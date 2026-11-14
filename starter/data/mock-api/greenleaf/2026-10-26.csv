@@ -1,0 +1,36 @@
+sku,product_name,price,regular_price,on_sale
+GS-001,Whole Milk 1 gal,3.36,3.36,false
+GS-002,Extra Virgin Olive Oil 1 L,16.71,16.71,false
+GS-003,Chicken Breast 2 lb,14.48,14.48,false
+GS-004,Ground Beef 2 lb,11.90,11.90,false
+GS-005,Cheddar Cheese 1 lb,8.67,8.67,false
+GS-006,Large Eggs dozen,6.25,6.25,false
+GS-007,Ground Coffee 12 oz,12.35,12.35,false
+GS-008,Butter 1 lb,4.84,4.84,false
+GS-009,Laundry Detergent 64 oz,11.95,11.95,false
+GS-010,Toilet Paper 12 rolls,10.93,10.93,false
+GS-011,Bananas 1 lb,2.20,2.20,false
+GS-012,Salmon Fillet 1 lb,8.85,8.85,false
+GS-013,Whole Wheat Bread,5.89,5.89,false
+GS-014,Orange Juice 52 oz,5.59,5.59,false
+GS-015,Diapers 60 count,15.37,15.37,false
+GS-016,Pasta Sauce 24 oz,5.31,5.31,false
+GS-018,Roma Tomatoes 1 lb,2.19,2.19,false
+GS-019,Yellow Onions 3 lb,3.55,3.55,false
+GS-020,Russet Potatoes 5 lb,5.01,5.01,false
+GS-021,Baby Spinach 5 oz,3.61,3.61,false
+GS-022,Greek Yogurt 32 oz,6.43,6.43,false
+GS-023,Shampoo 12 oz,6.50,6.50,false
+GS-025,Flour Tortillas 10 count,3.36,3.36,false
+GS-026,Bacon 12 oz,7.83,7.83,false
+GS-028,Spaghetti 16 oz,1.84,1.84,false
+GS-029,Peanut Butter 16 oz,4.24,4.24,false
+GS-030,Corn Flakes Cereal 18 oz,4.84,4.84,false
+GS-032,Frozen Pepperoni Pizza,7.12,7.12,false
+GS-033,Vanilla Ice Cream 1.5 qt,5.68,5.68,false
+GS-035,Cola 2 L,2.14,2.39,true
+GS-036,Sparkling Water 12 pack,5.30,5.30,false
+GS-037,Dish Soap 24 oz,3.41,3.41,false
+GS-038,Paper Towels 6 rolls,9.68,9.68,false
+GS-039,Toothpaste 6 oz,3.69,3.69,false
+GS-040,Baby Wipes 72 count,7.01,7.01,false

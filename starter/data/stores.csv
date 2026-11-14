@@ -1,0 +1,9 @@
+chain_id,chain_name,provider,store_name,address,city,latitude,longitude
+freshmart,FreshMart,standard,FreshMart Beacon Street,1200 Beacon Street,Port Marlowe,29.2105,-81.0312
+valugrocer,ValuGrocer,standard,ValuGrocer Westgate,455 Westgate Boulevard,Port Marlowe,29.1873,-81.0921
+greenleaf,GreenLeaf Market,standard,GreenLeaf Market Old Town,18 Magnolia Avenue,Port Marlowe,29.2251,-81.0228
+harvest,Harvest Foods,cents,Harvest Foods Lakeside,2301 Lakeside Drive,Port Marlowe,29.2418,-81.0764
+citypantry,City Pantry,cents,City Pantry Downtown,77 Main Street,Port Marlowe,29.2012,-81.0189
+budgetbasket,Budget Basket,cents,Budget Basket Southside,3900 Orchard Road,Port Marlowe,29.1602,-81.0497
+cornercoop,Corner Co-op,flyer,Corner Co-op Mill Lane,5 Mill Lane,Port Marlowe,29.2156,-81.0583
+sunrise,Sunrise Market,flyer,Sunrise Market Harbor View,640 Harbor View Road,Port Marlowe,29.1798,-81.0143

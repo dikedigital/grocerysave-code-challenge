@@ -1,0 +1,41 @@
+sku,name,category,unit,aliases
+GS-001,Whole Milk 1 gal,Dairy,gal,milk|whole milk|gallon of milk|milk gallon|gallon milk
+GS-002,Extra Virgin Olive Oil 1 L,Pantry,bottle,olive oil|extra virgin olive oil|evoo
+GS-003,Chicken Breast 2 lb,Meat & Seafood,pack,chicken|chicken breast|boneless chicken breast|chicken fillet
+GS-004,Ground Beef 2 lb,Meat & Seafood,pack,ground beef|beef|minced beef|beef mince|hamburger meat
+GS-005,Cheddar Cheese 1 lb,Dairy,lb,cheddar|cheddar cheese|cheese
+GS-006,Large Eggs dozen,Dairy,dozen,eggs|dozen eggs|large eggs|carton of eggs
+GS-007,Ground Coffee 12 oz,Beverages,bag,coffee|ground coffee
+GS-008,Butter 1 lb,Dairy,lb,butter|salted butter|unsalted butter
+GS-009,Laundry Detergent 64 oz,Household,bottle,laundry detergent|detergent|laundry soap|washing liquid
+GS-010,Toilet Paper 12 rolls,Household,pack,toilet paper|tp|toilet rolls|bath tissue|loo roll
+GS-011,Bananas 1 lb,Produce,lb,bananas|banana
+GS-012,Salmon Fillet 1 lb,Meat & Seafood,lb,salmon|salmon fillet|fresh salmon
+GS-013,Whole Wheat Bread,Bakery,loaf,bread|whole wheat bread|wheat bread|loaf of bread|wholemeal bread
+GS-014,Orange Juice 52 oz,Beverages,bottle,orange juice|oj|juice
+GS-015,Diapers 60 count,Baby,box,diapers|baby diapers|nappies
+GS-016,Pasta Sauce 24 oz,Pantry,jar,pasta sauce|marinara|marinara sauce|tomato sauce|spaghetti sauce
+GS-017,Gala Apples 3 lb,Produce,bag,apples|gala apples|bag of apples
+GS-018,Roma Tomatoes 1 lb,Produce,lb,tomatoes|roma tomatoes|fresh tomatoes
+GS-019,Yellow Onions 3 lb,Produce,bag,onions|yellow onions|bag of onions
+GS-020,Russet Potatoes 5 lb,Produce,bag,potatoes|russet potatoes|bag of potatoes
+GS-021,Baby Spinach 5 oz,Produce,bag,spinach|baby spinach|fresh spinach
+GS-022,Greek Yogurt 32 oz,Dairy,tub,yogurt|greek yogurt|yoghurt|plain yogurt
+GS-023,Shampoo 12 oz,Personal Care,bottle,shampoo|hair shampoo
+GS-024,Plain Bagels 6 count,Bakery,pack,bagels|plain bagels
+GS-025,Flour Tortillas 10 count,Bakery,pack,tortillas|flour tortillas|wraps
+GS-026,Bacon 12 oz,Meat & Seafood,pack,bacon|smoked bacon|sliced bacon
+GS-027,Long Grain Rice 2 lb,Pantry,bag,rice|white rice|long grain rice
+GS-028,Spaghetti 16 oz,Pantry,box,spaghetti|pasta|noodles
+GS-029,Peanut Butter 16 oz,Pantry,jar,peanut butter|pb|creamy peanut butter
+GS-030,Corn Flakes Cereal 18 oz,Pantry,box,cereal|corn flakes|cornflakes|breakfast cereal
+GS-031,Tortilla Chips 13 oz,Pantry,bag,tortilla chips|chips|nacho chips|corn chips
+GS-032,Frozen Pepperoni Pizza,Frozen,each,frozen pizza|pizza|pepperoni pizza
+GS-033,Vanilla Ice Cream 1.5 qt,Frozen,tub,ice cream|vanilla ice cream
+GS-034,Frozen Peas 16 oz,Frozen,bag,peas|frozen peas|green peas
+GS-035,Cola 2 L,Beverages,bottle,cola|soda|coke|soft drink
+GS-036,Sparkling Water 12 pack,Beverages,pack,sparkling water|seltzer|soda water|fizzy water
+GS-037,Dish Soap 24 oz,Household,bottle,dish soap|dishwashing liquid|washing up liquid
+GS-038,Paper Towels 6 rolls,Household,pack,paper towels|kitchen roll|kitchen towels
+GS-039,Toothpaste 6 oz,Personal Care,tube,toothpaste|tooth paste
+GS-040,Baby Wipes 72 count,Baby,pack,baby wipes|wipes|wet wipes
