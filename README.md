@@ -16,12 +16,6 @@ The model works in an Ubuntu VM with no external access.
 | `TASKS.md` | for the reviewer: task description, how to judge completion, eight tasks and 66 rounds (the message to send at each round, what to look for, grader checkpoints) |
 | `vm-selftest.sh` | run inside the VM before the session: checks Node, native binaries, typecheck/lint/build, Postgres |
 
-## What is not published
-
-The hidden tests (595 tests across the eight tasks), the grading script, the reference solution and
-the offline dependency bundles are not in this repository, so the challenge stays blind. References
-to `grader/` and `reference/` in `TASKS.md` point at those private files.
-
 ## Tasks
 
 | # | Area | Rounds |
