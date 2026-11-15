@@ -8,6 +8,7 @@
  */
 import type { BasketLine, PriceTable, Store } from '../../src/models';
 import { GOLDEN_CHAINS, GOLDEN_PRODUCTS } from './spreadsheet';
+import { PORT_MARLOWE_STORES as PORT_MARLOWE_LOCATIONS } from './route';
 
 export const goldenStoreId = (chainId: string) => `store-${chainId}`;
 export const goldenProductId = (sku: string) => `product-${sku}`;
@@ -36,3 +37,16 @@ export const GOLDEN_PRICES: PriceTable = Object.fromEntries(
     Object.fromEntries(GOLDEN_CHAINS.map((chain, index) => [goldenStoreId(chain.id), product.prices[index]])),
   ])
 );
+
+/**
+ * The golden stores at their real Port Marlowe coordinates (data/stores.csv; same ids), for plans
+ * with travel. GOLDEN_STORES above sit on an artificial diagonal line and are not meant for routes.
+ * The seeded app prices exactly these stores with the golden prices (TECH_SPEC 9).
+ */
+export const GOLDEN_STORES_PORT_MARLOWE: Store[] = GOLDEN_STORES.map((store, index) => ({
+  ...store,
+  name: PORT_MARLOWE_LOCATIONS[index].name,
+  address: '',
+  city: 'Port Marlowe',
+  location: { ...PORT_MARLOWE_LOCATIONS[index].location },
+}));

@@ -1,5 +1,7 @@
-> **Starter state.** The business logic in `src/utils` (stubs that throw `not implemented`) and the
-> server (`server/src/app.ts`, routes, services, providers, sync job, seed) are not written yet.
+> **Current state.** The pure logic in `src/utils` is implemented and unit-tested (parsing,
+> matching, comparison, routing, purchase optimisation, deal detection; choices in
+> `docs/DECISIONS.md`, manual checks in `docs/MANUAL_TESTING.md`). The server (`server/src/app.ts`,
+> routes, services, providers, sync job, seed) and several UI components are not written yet.
 > The specification is `TECH_SPEC.md`; this README describes the finished application.
 
 # GrocerySave
