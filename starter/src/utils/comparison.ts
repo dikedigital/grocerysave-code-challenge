@@ -7,7 +7,8 @@ import type {
   StoreTotal,
   UserPreferences,
 } from '../models';
-import { fromCents, toCents } from './money';
+import { fromCents } from './money';
+import { lineTotalCents, unitPriceAt } from './pricing';
 
 /**
  * Applies the user's chain preferences. A store is kept when its chain is not excluded and
@@ -21,24 +22,6 @@ export function filterStores(
   const included = new Set(preferences.includedChains);
   // A new array in the input order; the store objects themselves are kept (not copied).
   return stores.filter((store) => !excluded.has(store.chainId) && (included.size === 0 || included.has(store.chainId)));
-}
-
-/**
- * The unit price of a product at a store, or undefined when the store does not sell it: no entry,
- * or an entry that is not a finite number (a NaN price would otherwise count as free).
- */
-function unitPriceAt(prices: PriceTable, productId: string | null, storeId: string): number | undefined {
-  // Own keys only, at both levels: ids such as "constructor" or "length" must not pick up inherited
-  // members (prices["constructor"] is Object, whose own "length" is the number 1).
-  if (productId === null || !hasOwn(prices, productId)) return undefined;
-  const byStore = prices[productId];
-  if (!byStore || !hasOwn(byStore, storeId)) return undefined;
-  const price = byStore[storeId];
-  return Number.isFinite(price) ? price : undefined;
-}
-
-function hasOwn(object: object, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(object, key);
 }
 
 /** part / whole x 100, or 0 when the whole is 0 (no basket, or everything free). */
@@ -65,7 +48,7 @@ function priceRow(line: BasketLine, storeIds: string[], prices: PriceTable): Pri
       return null;
     }
     // Rounded once, on the line total (3.2 x 0.333 = 1.0656 -> 107 cents), without float drift.
-    const total = toCents(unitPrice * line.quantity);
+    const total = lineTotalCents(unitPrice, line.quantity);
     unitPrices[storeId] = unitPrice;
     lineTotals[storeId] = fromCents(total);
     return total;
