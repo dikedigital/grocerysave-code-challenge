@@ -62,9 +62,9 @@ hidden test of that task passes; partial credit is the fraction passed.
 | 4 API core | 8 | `server/tests/{auth,lists}.test.ts` | 30 |
 | 5 API planning and sharing | 11 | `server/tests/{comparison,routes,households,deals}.test.ts` | 65 |
 | 6 Comparison view | 8 | `src/components/comparison/__tests__/{format,heatColor,exportCsv,downloadCsv,SummaryCards,StoreCard,ComparisonTable}.test.ts(x)` | 84 |
-| 7 Plan and route view | 7 | `src/components/optimization/__tests__/{mapProjection,planKey,RouteMap,PlanSummary,StoreCountTable,PlanStoreCard}.test.ts(x)` | 69 |
+| 7 Plan and route view | 7 | `src/components/optimization/__tests__/{mapProjection,planKey,RouteMap,PlanSummary,StoreCountTable,PlanStoreCard}.test.ts(x)` | 73 |
 | 8 Lists, deals and settings forms | 8 | `src/components/shopping-list/__tests__/{format,ListCard,ImportPreview,ListItemRow}.test.ts(x)`, `src/components/settings/__tests__/tripValidation.test.ts`, `src/components/comparison/__tests__/DealsList.test.tsx` | 91 |
-| **Total** | **66** | | **595** |
+| **Total** | **66** | | **599** |
 
 **Per round.** Every round lists *Look for* criteria, taken from the specification, and some rounds
 a *Checkpoint*: a grader command that runs just the test files that round should have made pass
@@ -863,7 +863,7 @@ dependencies.
 **What is to be accomplished.** Re-implement the plan view's building blocks as `TECH_SPEC.md`
 section 7.2 specifies: the projection helpers in `src/components/optimization/mapProjection.ts` and
 `planKey.ts`, and the components `PlanStoreCard.tsx`, `StoreCountTable.tsx`, `PlanSummary.tsx` and
-`RouteMap.tsx` (an offline SVG map, since there is no maps provider). Hidden tests: 69.
+`RouteMap.tsx` (an offline SVG map, since there is no maps provider). Hidden tests: 73.
 Prerequisites: Tasks 1 and 6 (the components use the formatting helpers from Task 6).
 
 ### Turn plan: messages to the model
@@ -910,8 +910,8 @@ and rounding; the plan key sorts store ids without mutating the plan and joins t
 > Now `PlanStoreCard.tsx` and `StoreCountTable.tsx` with their tests. The card shows one store's part
 > of the plan: stop number, store, items with quantity, unit price and line total, and the subtotal.
 > The table compares the plans for one store, two stores and so on: stores visited, items, distance,
-> travel cost, grand total, a marker on the best plan, and a button to show a plan. Test the selected
-> and best states, a plan with no travel, and selecting with the mouse and the keyboard.
+> travel time, travel cost, grand total, a marker on the best plan, and a button to show a plan. Test
+> the selected and best states, a plan with no travel, and selecting with the mouse and the keyboard.
 
 *Look for:* money and distance formats as specified; the best row marked in text, not just colour;
 the selected row announced (`aria-current` or as specified); buttons named per spec; the no-travel
@@ -920,12 +920,16 @@ case shows what the spec says; callbacks receive the right plan.
 **Round 5: plan summary.**
 
 > Now `PlanSummary.tsx`: three cards for the cheapest single store, the best plan and the savings
-> against a single store. Test them with a result where the best plan is one store, where it is three,
-> where there is no single-store plan at all (no stores), and where the saving is zero.
+> against a single store. Show the travel time of the single-store and best plans, and say how much
+> longer or shorter the best plan's trip is than the single store's, so the shopper can weigh minutes
+> against money. Test them with a result where the best plan is one store, where it is three, where
+> there is no single-store plan at all (no stores), where the saving is zero, and where there is no
+> route.
 
 *Look for:* each card is one container with a title and detail lines as specified; the singular and
-plural of "store"; the items-plus-travel breakdown; sensible text when a plan is null; percentages
-and money formatted as specified.
+plural of "store"; the items-plus-travel breakdown; the travel time on its own line, only with a route
+and a distance; the "more / less travel than the cheapest single store" line; sensible text when a plan
+is null; percentages, money and durations formatted as specified.
 
 **Round 6: the route map.**
 
@@ -949,7 +953,7 @@ route; unused stores shown but muted; scale bar from `scaleBarKm`; degenerate ca
 
 *Look for:* commands shown; at least one real robustness finding or a justified "checked, fine";
 label truncation; no overlap logic claimed without evidence; honest list of choices.
-*Checkpoint:* `grade.mjs 7 <repo>` expects 69/69.
+*Checkpoint:* `grade.mjs 7 <repo>` expects 73/73.
 
 ---
 

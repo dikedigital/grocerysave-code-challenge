@@ -253,6 +253,9 @@ Jaccard token overlap, and breaks ties by shorter name then lower SKU.
 - With `home` set, stops are ordered with `planRoute` (round trip from home). `travelDistanceKm` is
   that route's rounded `totalDistanceKm`, and `travelCost = roundCents(travelDistanceKm x
   travelCostPerKm)`. A plan with a home but no stops has a zero-length route, not `null`.
+- Plans are ranked by money only. Travel time is not given a price: every plan carries its `route`
+  with `totalDurationMin`, and the plan and route view (7.2.5, 7.2.6) shows it so that the shopper
+  decides whether a cheaper plan is worth the longer trip.
 - Performance: 8 stores, 16 lines, `maxStores` 8 and a home location must complete in under 2
   seconds. Callers keep the store list to about 8 stores.
 
@@ -875,22 +878,33 @@ Let `single = result.cheapestSingleStore`, `best = result.bestPlan`.
 1. **Title `Cheapest single store`.** Headline value: money of `single.grandTotal`, or `None` when
    `single` is null. Details when present: the store label (7.2.1) of `single.storeIds[0]`; then
    `Items {money of itemsTotal}` followed by ` + travel {money of travelCost}` only when
-   `travelCost > 0` (`Items $20.00`, `Items $38.00 + travel $2.00`). When null the detail is
-   `No store has a price for the items on this list.`
+   `travelCost > 0` (`Items $20.00`, `Items $38.00 + travel $2.00`); then, only when
+   `single.route` is not null and `single.travelDistanceKm > 0`, a line of its own
+   `Travel time {formatDuration(single.route.totalDurationMin)}` (`Travel time 18 min`). When null
+   the detail is `No store has a price for the items on this list.`
 2. **Title `Best plan`.** Headline: money of `best.grandTotal`, or `None`. Details when present:
    `{count label}: {store labels joined by ", "}` with the stores in the plan's `storeIds`
    order (`2 stores: Eastside Foods, Downtown (Costco)`, `1 store: Eastside Foods`); then
    `Items {itemsTotal} + travel {travelCost}` with the travel cost always shown, even `$0.00`,
    followed by ` ({distance})` only when `travelDistanceKm > 0` (`Items $1,200.00 + travel
-   $34.50 (12.3 km)`, `Items $12.00 + travel $0.00`). When null the detail is
-   `No plan could be made.`
+   $34.50 (12.3 km)`, `Items $12.00 + travel $0.00`); then, only when `best.route` is not null
+   and `best.travelDistanceKm > 0`, a line of its own `Travel time
+   {formatDuration(best.route.totalDurationMin)}` (`Travel time 1 h 5 min`). When null the detail
+   is `No plan could be made.`
 3. **Title `Savings vs single store`.** Headline: money of `result.savingsVsSingleStore` (`$0.00`
    when there are no plans). Detail: when `savingsVsSingleStore > 0`, `{percentage} less than
    shopping at one store.` where the percentage is `savingsVsSingleStore / single.grandTotal * 100`
    formatted as in 7.2.1 (`$5.00` saved against a `$40.00` single store: `12.50% less than
    shopping at one store.`; `$1.00` against `$30.00`: `3.33% less than shopping at one store.`),
    or `0.00%` when `single` is null or its total is not above zero; otherwise
-   `Splitting the shop does not beat the cheapest single store.`
+   `Splitting the shop does not beat the cheapest single store.` Then, as a line of its own, the
+   price of the saving in time: when `single.route` and `best.route` are both not null and their
+   `totalDurationMin` differ, `{d} more travel than the cheapest single store.` when the best
+   plan takes longer and `{d} less travel than the cheapest single store.` when it takes less,
+   with `d = formatDuration(|best.route.totalDurationMin - single.route.totalDurationMin|)`
+   (`18 min more travel than the cheapest single store.`). Otherwise this line is absent. This line
+   is shown whether or not there is a saving: the time is for the shopper to weigh against the
+   money, not for the ranking.
 
 #### 7.2.6 `StoreCountTable`
 
@@ -909,19 +923,21 @@ with exactly `By number of stores`, a short explanatory sentence (wording free) 
 whose `<caption>` (visually hidden) gives it the accessible name
 `Best plan for each number of stores visited`.
 
-- **Header row**: six `<th scope="col">` column headers with exactly these texts, in order:
-  `Stores visited`, `Items`, `Travel distance`, `Travel cost`, `Grand total`, `Show details`
-  (the last one visually hidden).
+- **Header row**: seven `<th scope="col">` column headers with exactly these texts, in order:
+  `Stores visited`, `Items`, `Travel distance`, `Travel time`, `Travel cost`, `Grand total`,
+  `Show details` (the last one visually hidden).
 - **Body**: one row per element of `plans`, in the order given. With no plans there are no body
   rows (the header row remains). Each body row starts with a row header (`<th scope="row">`)
-  followed by five `<td>` cells.
+  followed by six `<td>` cells.
 - **Row header**: in this order, the count label of `plan.storeIds.length` (`1 store`,
   `2 stores`), then, only for the best plan, the text `Best` as the entire text of its own
   element, then the store labels of `plan.storeIds` in that order joined by `, ` (unknown ids
   show as the id).
-- **Cells 1-4**: money of `itemsTotal`; the distance of `travelDistanceKm` when it is above 0,
-  otherwise an em dash `—` (U+2014); money of `travelCost`; money of `grandTotal`. Cell 5 holds
-  the button.
+- **Cells 1-5**: money of `itemsTotal`; the distance of `travelDistanceKm` when it is above 0,
+  otherwise an em dash `—` (U+2014); the travel time, `formatDuration(plan.route.totalDurationMin)`,
+  when `plan.route` is not null and `travelDistanceKm` is above 0, otherwise an em dash; money of
+  `travelCost`; money of `grandTotal`. Cell 6 holds the button. The time column is there so that
+  the shopper can compare, row by row, what each extra store saves against the minutes it adds.
 - **Best plan**: a row is the best row when `planKey(row plan) === planKey(bestPlan)`, i.e. the
   same set of stores, not the same object and not necessarily the same order. At most one row is
   marked, and none when `bestPlan` is null or not in `plans`. The marker is the `Best` text only.
