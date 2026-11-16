@@ -1,0 +1,12 @@
+data/mock-api/harvest/2026-10-19.csv [cents]: 34 rows (0 on sale), 0 skipped
+data/mock-api/harvest/2026-10-26.csv [cents]: 34 rows (2 on sale), 0 skipped
+data/mock-api/harvest/2026-11-02.csv [cents]: 34 rows (4 on sale), 0 skipped
+data/mock-api/harvest/2026-11-09.csv [cents]: 34 rows (4 on sale), 0 skipped
+data/mock-api/citypantry/2026-10-19.csv [cents]: 37 rows (1 on sale), 0 skipped
+data/mock-api/citypantry/2026-10-26.csv [cents]: 37 rows (0 on sale), 0 skipped
+data/mock-api/citypantry/2026-11-02.csv [cents]: 37 rows (3 on sale), 0 skipped
+data/mock-api/citypantry/2026-11-09.csv [cents]: 37 rows (2 on sale), 0 skipped
+data/mock-api/budgetbasket/2026-10-19.csv [cents]: 36 rows (2 on sale), 0 skipped
+data/mock-api/budgetbasket/2026-10-26.csv [cents]: 36 rows (1 on sale), 0 skipped
+data/mock-api/budgetbasket/2026-11-02.csv [cents]: 36 rows (4 on sale), 0 skipped
+data/mock-api/budgetbasket/2026-11-09.csv [cents]: 37 rows (2 on sale), 0 skipped
