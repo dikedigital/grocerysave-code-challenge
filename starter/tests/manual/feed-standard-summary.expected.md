@@ -1,0 +1,12 @@
+data/mock-api/freshmart/2026-10-19.csv [standard]: 37 rows (3 on sale), 0 skipped
+data/mock-api/freshmart/2026-10-26.csv [standard]: 37 rows (1 on sale), 0 skipped
+data/mock-api/freshmart/2026-11-02.csv [standard]: 37 rows (4 on sale), 0 skipped
+data/mock-api/freshmart/2026-11-09.csv [standard]: 37 rows (4 on sale), 0 skipped
+data/mock-api/valugrocer/2026-10-19.csv [standard]: 36 rows (4 on sale), 0 skipped
+data/mock-api/valugrocer/2026-10-26.csv [standard]: 36 rows (4 on sale), 0 skipped
+data/mock-api/valugrocer/2026-11-02.csv [standard]: 36 rows (4 on sale), 0 skipped
+data/mock-api/valugrocer/2026-11-09.csv [standard]: 36 rows (1 on sale), 2 skipped
+data/mock-api/greenleaf/2026-10-19.csv [standard]: 35 rows (1 on sale), 0 skipped
+data/mock-api/greenleaf/2026-10-26.csv [standard]: 35 rows (1 on sale), 0 skipped
+data/mock-api/greenleaf/2026-11-02.csv [standard]: 35 rows (2 on sale), 0 skipped
+data/mock-api/greenleaf/2026-11-09.csv [standard]: 35 rows (3 on sale), 0 skipped

@@ -53,6 +53,24 @@ The demo account is defined in `server/src/db/seed.ts`.
 | `npm test` | Both |
 | `npm run typecheck` / `npm run lint` | Static checks |
 
+## Logs
+
+Execution logs are written for troubleshooting:
+
+- `logs/app/grocerysave-YYYY-MM-DD.log` holds one JSON object per line (`time`, `level`, `component`,
+  `event`, `message`, plus context such as `source`, `line` and `reason`). A new file starts each
+  day (UTC).
+- A readable copy of each record goes to stderr.
+- Settings (see `.env.example`): `LOG_LEVEL` (`debug`, `info`, `warn`, `error`, `silent`; default
+  `info`), `LOG_DIR` (empty disables the file) and `LOG_CONSOLE`.
+
+For example, a feed row that cannot be read is logged as `row_skipped`, with the file, the line
+number, a reason code and the raw line:
+
+```bash
+grep '"event":"row_skipped"' logs/app/grocerysave-*.log
+```
+
 ## How it is organised
 
 ```
