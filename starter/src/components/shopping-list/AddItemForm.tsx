@@ -12,13 +12,20 @@ interface AddItemFormProps {
   onAdd: (item: NewItemInput) => Promise<void>;
 }
 
+/**
+ * The unit menu starts on "auto": no unit is sent, so the server uses the matched product's unit,
+ * or `each` when nothing matches (TECH_SPEC 6.3; decision D-140, option A). Picking a unit sends it.
+ */
+export const AUTO_UNIT = '';
+export const AUTO_UNIT_LABEL = 'auto';
+
 const selectClass =
   'w-full rounded-md border border-gray-300 bg-white px-3 py-2 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 disabled:opacity-50';
 
 const AddItemForm: React.FC<AddItemFormProps> = ({ onAdd }) => {
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('1');
-  const [unit, setUnit] = useState<string>('each');
+  const [unit, setUnit] = useState<string>(AUTO_UNIT);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,9 +47,10 @@ const AddItemForm: React.FC<AddItemFormProps> = ({ onAdd }) => {
     setSaving(true);
     setError(null);
     try {
-      await onAdd({ name: trimmed, quantity: amount, unit, note: note.trim() || undefined });
+      await onAdd({ name: trimmed, quantity: amount, unit: unit === AUTO_UNIT ? undefined : unit, note: note.trim() || undefined });
       setName('');
       setQuantity('1');
+      setUnit(AUTO_UNIT);
       setNote('');
       nameRef.current?.focus();
     } catch (err) {
@@ -91,6 +99,7 @@ const AddItemForm: React.FC<AddItemFormProps> = ({ onAdd }) => {
               className={selectClass}
               disabled={saving}
             >
+              <option value={AUTO_UNIT}>{AUTO_UNIT_LABEL}</option>
               {ITEM_UNITS.map((option) => (
                 <option key={option} value={option}>
                   {option}

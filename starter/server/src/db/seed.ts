@@ -3,7 +3,6 @@
  * `data/products.csv`), `seedDemo` (demo users, preferences, household and lists) and `seed` (all
  * of it, with a price sync in between). All idempotent. Decisions D-84 and D-98 to D-103.
  */
-import bcrypt from 'bcryptjs';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Pool, PoolClient } from 'pg';
@@ -12,6 +11,7 @@ import { config } from '../config';
 import { errorMessage } from '../errors';
 import { syncPrices } from '../jobs/syncPrices';
 import { logger as rootLogger, type Logger } from '../logger';
+import { hashPassword } from '../services/passwords';
 
 export interface SeedOptions {
   /** Folder holding stores.csv and products.csv; default config.dataDir (DATA_DIR, ./data). */
@@ -165,8 +165,6 @@ export const DEMO_HOME = { lat: 29.2, lng: -81.045 } as const;
 export const DEMO_HOUSEHOLD_NAME = 'Demo household';
 export const WEEKLY_BASICS = 'Weekly basics';
 export const PARTY_SUPPLIES = 'Party supplies';
-/** bcryptjs cost (TECH_SPEC 6.1). */
-const BCRYPT_COST = 10;
 
 /** One demo list item: a catalog SKU (or null for an unmatched item), a short name and a quantity. */
 interface DemoItem { sku: string | null; name: string; quantity: number }
@@ -243,7 +241,7 @@ export async function seedDemo(pool: Pool, options: { logger?: Logger } = {}): P
     const ensureUser = async (email: string, displayName: string): Promise<string> => {
       const existing = await client.query<{ id: string }>('SELECT id FROM users WHERE email = $1', [email]);
       if (existing.rows[0]) return existing.rows[0].id;
-      const hash = await bcrypt.hash(DEMO_PASSWORD, BCRYPT_COST);
+      const hash = await hashPassword(DEMO_PASSWORD); // bcryptjs, cost 10: the same hashing as registration
       const inserted = await client.query<{ id: string }>(
         'INSERT INTO users (email, password_hash, display_name) VALUES ($1, $2, $3) RETURNING id',
         [email, hash, displayName],

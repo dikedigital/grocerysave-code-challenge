@@ -1,4 +1,4 @@
-import { Pool, types } from 'pg';
+import { Pool, types, type PoolClient } from 'pg';
 import { config } from '../config';
 
 // Return NUMERIC as JS numbers (prices have two decimals, quantities three) and DATE as 'YYYY-MM-DD'.
@@ -6,6 +6,8 @@ types.setTypeParser(1700, (value) => Number(value));
 types.setTypeParser(1082, (value) => value);
 
 export type Db = Pool;
+/** What a service runs its SQL on: the pool, or a client inside a transaction (D-104). */
+export type Queryable = Pool | PoolClient;
 
 export function createPool(connectionString: string = config.databaseUrl): Pool {
   return new Pool({ connectionString, max: 10 });
