@@ -1,7 +1,13 @@
 > **Current state.** The pure logic in `src/utils` is implemented and unit-tested (parsing,
 > matching, comparison, routing, purchase optimisation, deal detection; choices in
-> `docs/DECISIONS.md`, manual checks in `docs/MANUAL_TESTING.md`). The server (`server/src/app.ts`,
-> routes, services, providers, sync job, seed) and several UI components are not written yet.
+> `docs/DECISIONS.md`, manual checks in `docs/MANUAL_TESTING.md`). The data layer (providers, sync
+> job, seed, CLI) is done. The HTTP API has its skeleton (`server/src/app.ts`: `GET /api/health`,
+> JSON 404 and error handling, structure in D-104), authentication (register, login, me; every
+> other route needs a token), lists (`/api/lists`, own lists only until household sharing) and list
+> items (add, edit, remove, bulk add, text/CSV import; matched to the catalog). A security pass
+> (MANUAL_TESTING M28) covers cross-user access, stored passwords and SQL injection, and an extremes
+> round (M29) covers huge pastes, odd input and the query count. The remaining
+> endpoints, `server/src/index.ts` and several UI components are not written yet.
 > The specification is `TECH_SPEC.md`; this README describes the finished application.
 
 # GrocerySave

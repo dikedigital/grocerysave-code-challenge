@@ -54,9 +54,23 @@ describe('startPriceSyncScheduler with the real syncPrices and database (short i
     expect(await count(pool, 'sync_runs')).toBe(completed * 8);
     expect(syncs).toHaveLength(completed);
     expect(sink.records.filter((record) => record.event === 'scheduled_sync_completed')).toHaveLength(completed);
-    // Stopping is the last thing logged: nothing ran after it.
-    expect(sink.records.at(-1)).toMatchObject({ event: 'scheduler_stopped', level: 'info' });
+    // Nothing new started after stopping. A sync already running when stop() was called finishes
+    // first (D-97), so its own two records may follow `scheduler_stopped`, and nothing else may.
+    // (Until API round 3 this asserted that `scheduler_stopped` is the last record, which failed
+    // whenever the 300 ms timer had just started another sync: a timing-dependent test.)
     expect(sink.records.filter((record) => record.event === 'scheduler_stopped')).toHaveLength(1);
+    const stoppedAt = sink.records.findIndex((record) => record.event === 'scheduler_stopped');
+    const stopRecord = sink.records[stoppedAt];
+    const after = sink.records.slice(stoppedAt + 1);
+    if (after.length === 0) {
+      expect(stopRecord.syncInProgress).toBe(false);
+    } else {
+      expect(stopRecord.syncInProgress).toBe(true);
+      expect(after.map((record) => [record.event, record.tick])).toEqual([
+        ['scheduled_sync_completed', stopRecord.ticks],
+        ['after_sync_completed', stopRecord.ticks],
+      ]);
+    }
   });
 
   it('a 30 ms interval, far shorter than a sync: ticks are skipped and no two syncs ever overlap', async () => {

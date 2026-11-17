@@ -28,14 +28,24 @@ section says what it covers and what is not testable yet.
 | Data layer, round 7 | `syncPrices` (4.2), `seedCatalog` (4.3), local Postgres; success logging confirmed | done | [M20](#m20-price-sync-syncprices-and-catalog-seed-seedcatalog) |
 | Data layer, round 8 | failure isolation in one sync; `startPriceSyncScheduler` (4.2 complete); `errorMessage` | done | [M21](#m21-failure-isolation-and-the-scheduler) |
 | Data layer, round 9 | `seedDemo`, `seed`, CLI: `npm run db:migrate`, `db:seed`, `db:reset`, `sync-prices` (TECH_SPEC 4 complete) | done | [M22](#m22-demo-data-seed-and-the-database-cli) |
-| Next | HTTP API (TECH_SPEC 6), then the server process and the remaining UI | not started | |
+| API, round 1 | HTTP API skeleton: `createApp` (`server/src/app.ts`), `GET /api/health`, JSON 404 for unknown `/api` paths, JSON 400 for malformed bodies, central error handler; `server/src` structure (D-104) | done; verified in API round 2 (all tests passed on the first run, M23 steps reproduced) | [M23](#m23-http-api-skeleton-api-round-1) |
+| API, round 2 | Authentication: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, `requireAuth` on every route except health, register and login | done | [M24](#m24-authentication-api-round-2) |
+| API, round 3 | Lists: `GET /api/lists`, `POST /api/lists`, `GET`/`PATCH`/`DELETE /api/lists/:id` (own lists only; visibility ready for sharing); `JWT_SECRET` warning | done | [M25](#m25-lists-api-round-3) |
+| API, round 4 | List items: `POST /api/lists/:id/items`, `PATCH`/`DELETE /api/lists/:id/items/:itemId` (catalog matching, order, list bump) | done | [M26](#m26-list-items-api-round-4) |
+| API, round 5 | Bulk add and import (`POST /api/lists/:id/items/bulk`, `POST /api/lists/:id/import`); a rename resets unit and quantity (D-136); the add form's `auto` unit (D-142) | done | [M27](#m27-bulk-add-and-import-api-round-5) |
+| API, round 6 | Security pass: cross-user evidence on every list route, stored passwords, auth answers, SQL injection (statement log + static audit); fixes D-150 to D-153. Also D-147: imports without a unit get the product's unit | done | [M28](#m28-security-pass-api-round-6) |
+| API, round 7 | Extremes: thousands of lines, multi-line CSV notes, quantities 0 / -2 / huge, blank and invisible names, very long names, bodies of the wrong shape; query count of `GET /api/lists`; fixes D-154 to D-157 | done | [M29](#m29-extremes-api-round-7) |
+| API, round 8 | Check of the stage: typecheck, lint, unit and API suites; what TECH_SPEC 6 still lacks | done | [M30](#m30-where-the-api-stands-api-round-8) |
+| Next | The server process (`index.ts`), household sharing, then the 20 missing endpoints of TECH_SPEC 6.3 (M30.2); the client components of 7.3 (`ListCard`, `ListItemRow`, `shopping-list/format.ts`, ...) | not started | |
 
 **UI: nothing is testable in the browser yet** (checked at stage 3). Every page that uses the logic
 built so far (`/lists/:id` with the bulk add form, `/compare`, `/plan`, `/deals`) is behind login,
 login needs the API (`POST /api/auth/login`), and the Express app (`server/src/app.ts`, `index.ts`)
 does not exist yet. Several components those pages render are still stubs (`DealsList`, `RouteMap`,
 ...). Without the API only the home page and empty login/register forms render. The first UI checks
-will be possible once the API has auth and lists.
+will be possible once the API has auth and lists. (Still true after API round 2: login
+works through the API, but there is no server process serving the built client yet, and the pages
+after login need the list endpoints.)
 
 Run every command from the repository root. Design choices referred to as `D-nn` are explained in
 [`docs/DECISIONS.md`](DECISIONS.md).
@@ -68,6 +78,11 @@ same problem both times; before the repair, `npx tsc --version` printed a global
 
 Check: `npx tsc --version` prints `Version 5.6.3`, `npx jest --version` prints `29.7.0`, and
 `npx eslint --version` prints `v9.12.0`.
+
+**`jest: Permission denied` can also mean that `node_modules` is missing altogether** (API round 1:
+no `node_modules` had been uploaded yet). `PATH` on this machine contains `/root/.local/bin`, which
+this user cannot read, so `sh` reports the failed lookup as `Permission denied` instead of
+`not found`. Check `ls node_modules | head -1` before repairing `.bin` links.
 
 ### 0.2 Saving test logs
 
@@ -107,6 +122,9 @@ bash tests/run-logged.sh unit npm run test:unit
 | `npx tsx tests/manual/sync-run.ts [--reset] [--syncs <n>] [--data-dir <dir>]` | Against `TEST_DATABASE_URL`: migrates, runs `seedCatalog`, runs `syncPrices` (n times), then prints what `syncPrices` returned, the `sync_runs` table, the row counts and `price_history` per chain. `--reset` empties the database first and is refused unless its name contains `test` (D-90). Writes execution logs. Exits 1 if a chain's run is `error`. |
 | `npx tsx tests/manual/scheduler-run.ts [--minutes <n>] [--seconds <n>] [--fail-callback]` | Against `TEST_DATABASE_URL` (catalog already seeded): starts `startPriceSyncScheduler` with the interval, prints one line per completed sync from the after-sync callback, stops after the given seconds (waiting for a sync in progress), then prints how many `sync_runs` were added and whether any overlap. The scheduler's records (ticks, skips, failures) go to stderr and `logs/app/`. |
 | `npx tsx tests/manual/golden-db.ts [--test]` | Reads `current_prices` (from `DATABASE_URL`, or `TEST_DATABASE_URL` with `--test`) for GS-001..GS-016 at the 8 chains and compares every cell of the 16 x 8 matrix, and the store totals, with `tests/fixtures/spreadsheet.ts`. Prints the matrix with a mark per cell (`*` = on sale); exits 1 on any difference. |
+| `npx tsx tests/manual/api-skeleton.ts [--port <n>] [--db-down]` | Serves `createApp(pool)` on `127.0.0.1` (port `PORT`, default 3001) against `DATABASE_URL`, for trying the API with `curl` until `server/src/index.ts` exists. It does not migrate or seed (run `npm run db:reset` first for the demo users). It prints every route and whether it needs a token, then a start line; wait for that line, since the first start takes a few seconds. Tokens are signed with `JWT_SECRET`. `--db-down` points the pool at a port where nothing listens, so you can see the 500 path. Logs at debug (one `request_completed` line per request) on stderr and in `logs/app/`; `LOG_CONSOLE=false` silences stderr, `LOG_DIR=` (empty) the file. Without `JWT_SECRET` it logs the `jwt_secret_default` warning at start (D-122). Ctrl+C stops it. |
+| `npx tsx tests/manual/auth-token.ts decode <token>` / `make <kind> <userId>` | `decode` prints a login token's header and payload, issue and expiry times, lifetime, and what the server's check says with `JWT_SECRET`. `make` prints a token of one kind for a user id: `valid`, `expired`, `other-secret`, `alg-none`, `hs512`, `no-exp`, `bad-sub`, `tampered`. Use the same `JWT_SECRET` as the server. |
+| `curl -s -w ' %{http_code}' ... \| node tests/manual/summarize.mjs` | Prints one readable line for an API answer (with the status `curl` appends): an item (`milk \| 1 gal \| Dairy \| product yes \| note null \| completed false  201`), a list (name, items, shared, `updatedAt`), an array of lists, an error, or `(no body)  204`. |
 | `npx tsx tests/manual/parse-list.ts <file>...` | Parses whole files: `.txt` with `parseListText`, `.csv`/`.tsv` with `parseListCsv`; one table per file. `--text` or `--csv` reads stdin instead (for example `pbpaste \| npx tsx tests/manual/parse-list.ts --text`). |
 
 ### 0.4 Execution logs
@@ -158,6 +176,9 @@ export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/grocerysave
 # after a reboot: the start line above; to stop: pg_ctl -D "$PGDATA" stop
 ```
 
+API round 1: this machine was a fresh one, so the cluster was created again with exactly these
+commands (PostgreSQL 16.15).
+
 Check: `DATABASE_URL=... TEST_DATABASE_URL=... bash vm-selftest.sh` ends with `ALL OK`. `npm run
 test:api` **wipes** `TEST_DATABASE_URL`; the test helpers refuse a database whose name does not
 contain `test` (D-90).
@@ -189,6 +210,43 @@ bash tests/run-logged.sh api npm run test:api
 Expected: **5 suites, 60 tests** (`server/tests/syncPrices.test.ts` 17, `seedCatalog.test.ts` 10,
 `scheduler.test.ts` 4, `seed.test.ts` 18, `cli.test.ts` 11), in about 30 s. It empties
 `TEST_DATABASE_URL` first.
+
+**After API round 1** (verified in API round 2): `test:unit` **21 suites, 1267 tests** (adds
+`server/src/middleware/__tests__/errorHandler.test.ts` 48 and `asyncHandler.test.ts` 12);
+`test:api` **7 suites, 124 tests** (adds `server/tests/app.test.ts` 37 and `errorHandling.test.ts` 27).
+
+**After API round 2**: `test:unit` **24 suites, 1318 tests** (adds
+`server/src/services/__tests__/passwords.test.ts` 17, `tokens.test.ts` 17,
+`server/src/routes/__tests__/define.test.ts` 17); `test:api` **8 suites, 205 tests** (adds
+`server/tests/auth.test.ts` 81), in about 40 s. See M24.1.
+
+**After API round 3**: `test:unit` **25 suites, 1324 tests** (adds
+`server/src/services/__tests__/lists.test.ts` 6); `test:api` **9 suites, 256 tests** (adds
+`server/tests/lists.test.ts` 50; `app.test.ts` is now 38), in about 60 s. See M25.1.
+
+**After API round 4**: `test:unit` **26 suites, 1336 tests** (adds
+`server/src/services/__tests__/items.test.ts` 12); `test:api` **10 suites, 333 tests** (adds
+`server/tests/items.test.ts` 75; `lists.test.ts` is now 52), in about 75 s. See M26.1.
+
+**After API round 5**: `test:unit` **26 suites, 1337 tests** (`items.test.ts` now 13);
+`test:web` **1 suite, 5 tests** (the first web test:
+`src/components/shopping-list/__tests__/AddItemForm.test.tsx`); `test:api` **11 suites, 389 tests**
+(adds `server/tests/import.test.ts` 55; `items.test.ts` is now 76), in about 90 s. See M27.1.
+
+**After API round 6**: `test:unit` **28 suites, 1367 tests** (adds
+`src/utils/__tests__/parseListDetailed.test.ts` 28 and `server/src/__tests__/sqlAudit.test.ts` 1;
+`server/src/services/__tests__/items.test.ts` is now 14); `test:web` **1 suite, 5 tests**;
+`test:api` **12 suites, 402 tests** (adds `server/tests/security.test.ts` 1; `app.test.ts` is now 48,
+`auth.test.ts` 82, `import.test.ts` 56). See M28.5.
+
+**After API round 7** (current): `test:unit` **30 suites, 1399 tests** (adds
+`src/utils/__tests__/parseListSigns.test.ts` 11 and `server/src/middleware/__tests__/validate.test.ts`
+21); `test:web` **1 suite, 5 tests**; `test:api` **13 suites, 479 tests** (adds
+`server/tests/extremes.test.ts` 77), in about 90 s. See M29.1.
+
+```bash
+bash tests/run-logged.sh web npm run test:web
+```
 The whole run takes about 10-20 s and writes no execution logs (D-79).
 
 ## M1. Money (`src/utils/money.ts`)
@@ -2509,3 +2567,1140 @@ and runs that test 5 times: 5 of 5 failed for both
 - **Log files keep growing**: there is no retention or clean-up yet (D-76).
 - **Open questions to the product owner**: D-101 (`seed` idempotence versus `sync_runs`). Several
   decisions are still Proposed and should be confirmed (D-98 to D-103 among them).
+
+## M23. HTTP API skeleton (API, round 1)
+
+What exists: `createApp(pool, { logger? })` in `server/src/app.ts`, which builds the Express app without
+listening. Also `GET /api/health`, a JSON 404 for every unknown `/api` path, a JSON 400 for malformed
+JSON bodies, and one central error handler. The layout of `server/src` for the coming endpoints is
+D-104; the behaviour choices are D-105 to D-115.
+
+**Status:** written in API round 1 without `node_modules` (D-116); **verified in API round 2**.
+Every test passed on its first run, and the outputs of M23.4 and M23.5 were reproduced exactly
+(logs `logs/tests/20261116T0138*-r1-*.log`, `20261116T0139*-r1-*.log`).
+
+### M23.1 The automated tests (run them first once `node_modules` is in place)
+
+```bash
+bash tests/run-logged.sh typecheck npm run typecheck
+bash tests/run-logged.sh lint      npm run lint
+bash tests/run-logged.sh unit      npm run test:unit
+bash tests/run-logged.sh api       npm run test:api      # needs TEST_DATABASE_URL (0.5); wipes it
+```
+
+| File | Project | Tests | What it checks |
+|---|---|---|---|
+| `server/src/middleware/__tests__/errorHandler.test.ts` | unit | 48 | `HttpError` and its helpers; `classifyError` for every row of the D-111 table (including statuses that must not be trusted, Node error codes that look like SQLSTATEs, non-`Error` values); `formatZodError` (nested paths, root issue, the cap of 5) |
+| `server/src/middleware/__tests__/asyncHandler.test.ts` | unit | 12 | rejections and synchronous throws reach `next` as an `Error`, including `undefined`, `false`, `''`, `'route'`, `'router'` (D-107) |
+| `server/tests/app.test.ts` | api | 37 | `createApp` does not listen; no `X-Powered-By`; health is `{ ok: true }` after `SELECT 1` on the given pool, public, also with a trailing slash and `HEAD`; debug request log without headers; a dead database gives a JSON 500, logged with `ECONNREFUSED`, app keeps serving; 11 unknown paths/methods are JSON 404 with and without a token, query string left out of the message; 8 malformed bodies are 400 on known and unknown paths, body never echoed or logged; 413 over 1 MB, 404 just under; 415 for `charset=latin1`; nothing outside `/api` is parsed or JSON-404'd |
+| `server/tests/errorHandling.test.ts` | api | 27 | real Postgres errors (bad uuid, int / numeric overflow, bad date, NUL byte, not-null, check, unique, foreign key) mapped to 400 / 409 / 404 and logged at warn, the unique violation's email not logged; undefined table stays 500; `HttpError` from sync and async handlers; zod errors 400; `Promise.reject(undefined / null / 'route' / 'router' / object)` is 500, never 404; an error after the response started is logged once and handed to Express |
+
+Expected: all pass. Totals are in section 1.
+
+### M23.2 The offline checks that ran this round
+
+Without `node_modules`, three things could still be checked. The scripts live in the git-ignored
+`logs/tests/api-skeleton-offline/`:
+
+```bash
+bash tests/run-logged.sh api-skeleton-offline bash logs/tests/api-skeleton-offline/run.sh
+bash tests/run-logged.sh api-skeleton-offline-mutations bash logs/tests/api-skeleton-offline/mutations.sh
+```
+
+`run.sh` does three things. (1) It type-checks the 15 new files strictly with the global TypeScript,
+standing in `any` for Express, `pg`, zod, supertest and Jest. (2) It **executes** `classifyError`,
+`formatZodError`, `HttpError`, `asError` and `asyncHandler` on 54 cases, with only the `ZodError`
+class stood in. (3) It confirms on the local Postgres every SQLSTATE the integration test expects.
+Expected last line: `ALL OFFLINE CHECKS OK`
+(`logs/tests/20261116T003032Z-api-skeleton-offline.log`, the final state of this round).
+
+`mutations.sh` plants 9 bugs one at a time and expects `run.sh` to fail on each. Examples: a unique
+violation mapped to 400, a `status` trusted without `expose`, rejections passed to `next` raw, a
+type error in a route. Expected: nine `caught` lines, `restored: offline checks green`,
+`survivors: 0` (`logs/tests/20261116T002853Z-api-skeleton-offline-mutations.log`).
+
+`logs/tests/20261116T002928Z-api-not-runnable.log` records that `npm run test:api` cannot start
+here yet (`jest: Permission denied`, which means "not installed", see 0.1).
+
+### M23.3 Start the skeleton
+
+```bash
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/grocerysave   # any reachable database
+npx tsx tests/manual/api-skeleton.ts
+```
+
+Expected: the route table (since API round 2, see M24.2), then `API skeleton on
+http://127.0.0.1:3001/api (database grocerysave on localhost:5432); Ctrl+C stops it`. The first start
+takes a few seconds; wait for that line. Leave it running, and use a second terminal for the next steps with
+`B=http://127.0.0.1:3001/api`.
+
+### M23.4 What each request answers
+
+| # | Command | Expected output (body, then status) |
+|---|---|---|
+| 1 | `curl -s -w ' %{http_code}\n' $B/health` | `{"ok":true} 200` |
+| 2 | `curl -s -I $B/health` | `HTTP/1.1 200 OK`, `Content-Type: application/json; charset=utf-8`, and **no** `X-Powered-By` line |
+| 3 | `curl -s -w ' %{http_code}\n' -H 'Authorization: Bearer garbage' $B/health` | `{"ok":true} 200` (public) |
+| 4 | `curl -s -w ' %{http_code}\n' $B/nope` | `{"error":"Not found: GET /api/nope"} 404` |
+| 5 | `curl -s -w ' %{http_code}\n' -H 'Authorization: Bearer garbage' $B/does/not/exist` | `{"error":"Not found: GET /api/does/not/exist"} 404` (404 for everyone, D-108) |
+| 6 | `curl -s -w ' %{http_code}\n' -X DELETE $B/health` | `{"error":"Not found: DELETE /api/health"} 404` (D-109) |
+| 7 | `curl -s -w ' %{http_code}\n' "$B/nope?q=milk"` | `{"error":"Not found: GET /api/nope"} 404`, without the query string |
+| 8 | `curl -s -w ' %{http_code}\n' -H 'Content-Type: application/json' -d '{"email":' $B/auth/login` | `{"error":"Malformed JSON body"} 400` |
+| 9 | `curl -s -w ' %{http_code}\n' -H 'Content-Type: application/json' -d "{'password': 'hunter2'}" $B/auth/login` | `{"error":"Malformed JSON body"} 400`, and `hunter2` appears neither in the answer nor in the log (M23.6) |
+| 10 | `curl -s -w ' %{http_code}\n' -H 'Content-Type: application/json' -d '"Milk"' $B/nope` | `{"error":"Malformed JSON body"} 400` (top level must be an object or array) |
+| 11 | `curl -s -w ' %{http_code}\n' -H 'Content-Type: application/json' -d '{"name":"Milk"}' $B/nope` | `{"error":"Not found: POST /api/nope"} 404` (valid body, unknown route) |
+| 12 | `python3 -c 'import json; print(json.dumps({"content": "x" * 1100000}))' > /tmp/big.json; curl -s -w ' %{http_code}\n' -H 'Content-Type: application/json' --data-binary @/tmp/big.json $B/nope` | `{"error":"Request body is too large"} 413` (D-112) |
+| 13 | `curl -s -w ' %{http_code}\n' -H 'Content-Type: application/json; charset=latin1' -d '{}' $B/nope` | `{"error":"unsupported charset \"LATIN1\""} 415` (D-112) |
+| 14 | `curl -s -w ' %{http_code}\n' http://127.0.0.1:3001/` | Express's HTML `Cannot GET /` and `404`: outside `/api` is the web app's space, served from the process stage on (D-105) |
+
+### M23.5 The database is down
+
+Stop the skeleton (Ctrl+C), then:
+
+```bash
+npx tsx tests/manual/api-skeleton.ts --db-down
+curl -s -w ' %{http_code}\n' $B/health       # in the second terminal
+curl -s -w ' %{http_code}\n' $B/nope
+```
+
+Expected: the start line ends with `, unreachable on purpose)`. Health answers
+`{"error":"Internal server error"} 500`, with no `ECONNREFUSED`, address or stack in the answer.
+The first terminal shows an `ERROR app.http request_failed: GET /api/health failed: connect
+ECONNREFUSED 127.0.0.1:1` line, with `"code":"ECONNREFUSED"` and the stack. The server keeps
+running, so `/api/nope` is still `404`. (D-113)
+
+### M23.6 What the log shows, and what it never shows
+
+After M23.4 and M23.5:
+
+```bash
+L=logs/app/grocerysave-$(date -u +%F).log
+grep '"event":"request_completed"' $L | tail -3        # one debug record per request
+grep -c 'hunter2' $L                                  # 0: the body of step 9 was never logged
+grep -c 'garbage' $L                                  # 0: Authorization headers are never logged
+grep '"event":"request_failed"' $L | tail -1          # the 500 of M23.5, with code and stack
+```
+
+Expected: `request_completed` records with `method`, `path` (no query string), `status` and
+`durationMs`; the two counts are `0`; one `request_failed` record at level `error`. The skeleton
+logs at debug; the real server will log at `LOG_LEVEL` (default info), where `request_completed`
+does not appear (D-114).
+
+### M23.7 Not verified yet
+
+- ~~Everything through real Express, `pg`, supertest and Jest~~: done in API round 2.
+- The server process (`index.ts`, static files, SPA fallback, D-105).
+- ~~Open: D-104, D-112~~: both confirmed in API round 2.
+
+## M24. Authentication (API, round 2)
+
+What exists: `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, and
+`requireAuth` in front of every route except `GET /api/health`, register and login (TECH_SPEC 6.1,
+6.3). Choices: D-117 to D-124. Everything below was run in this round, and the outputs shown are
+the real ones (ids and tokens differ on each run).
+
+### M24.1 The automated tests
+
+```bash
+export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/grocerysave_test
+bash tests/run-logged.sh typecheck npm run typecheck
+bash tests/run-logged.sh lint      npm run lint
+bash tests/run-logged.sh unit      npm run test:unit
+bash tests/run-logged.sh api       npm run test:api
+```
+
+| File | Project | Tests | What it checks |
+|---|---|---|---|
+| `server/src/services/__tests__/passwords.test.ts` | unit | 17 | 8 characters counted as code points, 72-byte maximum, NFC; bcrypt cost 10; the 72-byte-prefix attack refused; an unknown user still costs one bcrypt comparison |
+| `server/src/services/__tests__/tokens.test.ts` | unit | 17 | HS256, payload exactly `sub`/`iat`/`exp`, 7 days (valid a minute before, expired a second after); refused: another secret, `alg: none`, HS512, no expiry, no or non-uuid subject, not yet valid, tampered, garbage |
+| `server/src/routes/__tests__/define.test.ts` | unit | 17 | routes need a token by default (the handler never runs without one), public ones do not, every handler goes through `asyncHandler`; `joinPath`, `isUuid` |
+| `server/tests/auth.test.ts` | api | 81 | see below |
+
+`auth.test.ts`, against the real database:
+
+- **register**: 201 `{ token, user }`, email trimmed and lower-cased, name trimmed, no hash in the
+  answer; the stored hash is bcrypt cost 10; the token is HS256 with the user as subject, valid 7
+  days, usable at once; absent / null / blank name gives `''`.
+- **register failures**: duplicate email in a different case or with spaces is 409, and the first
+  account is untouched; 5 simultaneous sign-ups with one email give one 201 and four 409; 11 bad
+  emails, missing / empty / non-text email, 6 bad passwords (short, 7 emoji, over 72 bytes), name
+  too long or with a newline, and a non-object body are all 400. Accepted: 8 characters, 8 emoji,
+  72 bytes, 8 spaces.
+- **login**: 200 with the email in any case; wrong password and unknown email give the same 401 and
+  body; the password is compared exactly; the 72-byte prefix trick is refused; NFC/NFD match; a
+  bad-format email or short password is 401, not 400; empty input is 400; the seeded demo user logs
+  in with `demo1234`.
+- **me / requireAuth**: `bearer` in any case; missing token is 401 with `WWW-Authenticate: Bearer`;
+  12 kinds of bad token are 401 `Invalid token`; an expired token is 401 `Session expired, please
+  sign in again`; a deleted user's token is 401; another app's token is refused.
+- **logs**: no password, email or token in the log.
+- **route table**: only health, register and login are public, and every other route answers 401
+  without a token (D-117); unknown paths under `/api/auth` are 404 with or without a token.
+
+Expected: all pass (totals in section 1). Logs of this round: `logs/tests/20261116T020008Z-typecheck.log`,
+`...020035Z-lint.log`, `...020052Z-unit.log` (24 suites, 1318 tests), `...020115Z-api.log` (8 suites, 205 tests).
+
+**The deliberate-bug check** (about 7 minutes, needs `TEST_DATABASE_URL`):
+
+```bash
+bash tests/run-logged.sh auth-mutations bash logs/tests/auth-mutations.sh
+```
+
+It plants 20 bugs one at a time and restores each file. Examples: email not lower-cased or not
+trimmed, minimum 7, length counted in UTF-16 units, no 72-byte check on login, no NFC, cost 8, no
+dummy comparison, any HMAC algorithm accepted, tokens without expiry accepted, 8-day tokens, the
+user not looked up (a deleted user keeps access), no `WWW-Authenticate`, `bearer` refused, protected
+routes left open, `/me` declared public, a separate message for unknown emails, register answering
+200, the email logged. Expected: twenty `caught` lines and `survivors: 0; patterns not found: 0`
+(`logs/tests/20261116T015322Z-auth-mutations.log`).
+
+### M24.2 Start the API with the demo users
+
+```bash
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/grocerysave
+export JWT_SECRET=manual-check-secret          # the token tool below must use the same one
+npm run db:reset                               # demo@grocerysave.test / demo1234 and the partner
+npx tsx tests/manual/api-skeleton.ts
+```
+
+Expected, once started (a few seconds):
+
+```
+  GET    /api/health                  public
+  POST   /api/auth/register           public
+  POST   /api/auth/login              public
+  GET    /api/auth/me                 signed-in
+API skeleton on http://127.0.0.1:3001/api (database grocerysave on localhost:5432); Ctrl+C stops it
+```
+
+In a second terminal, with the same `JWT_SECRET`:
+
+```bash
+export JWT_SECRET=manual-check-secret
+B=http://127.0.0.1:3001/api; J='Content-Type: application/json'
+c() { curl -s -w ' %{http_code}\n' "$@"; }
+```
+
+### M24.3 The happy path
+
+| # | Command | Expected |
+|---|---|---|
+| 1 | `c -H "$J" -d '{"email":" DEMO@grocerysave.test ","password":"demo1234"}' $B/auth/login` | `{"token":"eyJhbGciOiJIUzI1NiIs...","user":{"id":"...","email":"demo@grocerysave.test","displayName":"Demo Shopper"}} 200` (email trimmed and case-insensitive) |
+| 2 | `T=$(curl -s -H "$J" -d '{"email":"demo@grocerysave.test","password":"demo1234"}' $B/auth/login \| node -pe 'JSON.parse(require("fs").readFileSync(0)).token'); echo ${#T}` | the token's length (about 188) |
+| 3 | `c -H "Authorization: Bearer $T" $B/auth/me` | `{"user":{"id":"...","email":"demo@grocerysave.test","displayName":"Demo Shopper"}} 200` |
+| 4 | `npx tsx tests/manual/auth-token.ts decode "$T"` | `header : {"alg":"HS256","typ":"JWT"}`, `payload: {"iat":...,"exp":...,"sub":"<the demo user's id>"}`, issue and expiry dates 7 days apart, `valid for: 7 days (604800 s)`, `server check with JWT_SECRET: {"ok":true,...}` |
+| 5 | `c -H "$J" -d '{"email":"  Ana.Silva@Example.COM ","password":"correct horse","displayName":"  Ana  "}' $B/auth/register` | `{"token":"...","user":{"id":"...","email":"ana.silva@example.com","displayName":"Ana"}} 201` |
+| 6 | `c -H "$J" -d '{"email":"ana.silva@example.com","password":"correct horse"}' $B/auth/login` | 200 with the same user |
+| 7 | `c -H "Authorization: bearer   $T" $B/auth/me` | 200 (`bearer` in lower case, extra spaces) |
+
+### M24.4 The failures
+
+| # | Command | Expected |
+|---|---|---|
+| 8 | `c -H "$J" -d '{"email":"ANA.SILVA@example.com","password":"another one"}' $B/auth/register` | `{"error":"An account with this email already exists"} 409` (duplicate in another case) |
+| 9 | `c -H "$J" -d '{"email":"ana@example","password":"correct horse"}' $B/auth/register` | `{"error":"email: must be a valid email address"} 400` |
+| 10 | `c -H "$J" -d '{"email":"bo@example.com","password":"1234567"}' $B/auth/register` | `{"error":"password: must be at least 8 characters"} 400` |
+| 11 | `c -H "$J" -d '{"email":"nope","password":"short"}' $B/auth/register` | `{"error":"email: must be a valid email address; password: must be at least 8 characters"} 400` |
+| 12 | `c -H "$J" -d '{"email":"ana.silva@example.com","password":"wrong horse"}' $B/auth/login` then `c -H "$J" -d '{"email":"nobody@example.com","password":"correct horse"}' $B/auth/login` | both `{"error":"Invalid email or password"} 401` (wrong password and unknown email look the same) |
+| 13 | `curl -s -i $B/auth/me \| grep -iE '^HTTP\|^www-auth\|^\{'` | `HTTP/1.1 401 Unauthorized`, `WWW-Authenticate: Bearer`, `{"error":"Authentication required"}` (missing token) |
+| 14 | `curl -s -i -H 'Authorization: Bearer garbage' $B/auth/me \| grep -iE '^HTTP\|^www-auth\|^\{'` | `HTTP/1.1 401 Unauthorized`, `WWW-Authenticate: Bearer error="invalid_token"`, `{"error":"Invalid token"}` (garbage token) |
+| 15 | `c -H "Authorization: Basic $T" $B/auth/me` and `c -H "Authorization: $T" $B/auth/me` | both `{"error":"Invalid token"} 401` |
+| 16 | see below | forged tokens |
+| 17 | see below | a deleted user's token |
+| 18 | `c $B/auth/nope`, `c -X POST $B/auth/me`, `c -H 'Authorization: Bearer garbage' $B/auth/whatever` | `{"error":"Not found: GET /api/auth/nope"} 404`, `{"error":"Not found: POST /api/auth/me"} 404`, `{"error":"Not found: GET /api/auth/whatever"} 404` (unknown paths are 404 for everyone, D-108) |
+
+**16. Forged and expired tokens** for the demo user:
+
+```bash
+ID=$(psql "$DATABASE_URL" -Atc "SELECT id FROM users WHERE email = 'demo@grocerysave.test'")
+for k in valid expired other-secret alg-none hs512 no-exp bad-sub tampered; do
+  printf '%-13s ' $k; c -H "Authorization: Bearer $(npx tsx tests/manual/auth-token.ts make $k $ID)" $B/auth/me | cut -c1-80
+done
+```
+
+Expected:
+
+```
+valid         {"user":{"id":"...","email":"demo@grocerysave.t
+expired       {"error":"Session expired, please sign in again"} 401
+other-secret  {"error":"Invalid token"} 401
+alg-none      {"error":"Invalid token"} 401
+hs512         {"error":"Invalid token"} 401
+no-exp        {"error":"Invalid token"} 401
+bad-sub       {"error":"Invalid token"} 401
+tampered      {"error":"Invalid token"} 401
+```
+
+**17. A token for a user that was deleted:**
+
+```bash
+T2=$(curl -s -H "$J" -d '{"email":"temp@example.com","password":"temporary1"}' $B/auth/register | node -pe 'JSON.parse(require("fs").readFileSync(0)).token')
+c -H "Authorization: Bearer $T2" $B/auth/me
+psql "$DATABASE_URL" -qc "DELETE FROM users WHERE email = 'temp@example.com'"
+c -H "Authorization: Bearer $T2" $B/auth/me
+```
+
+Expected: first `{"user":{"id":"...","email":"temp@example.com","displayName":""}} 200`, then
+`{"error":"Invalid token"} 401`. The token itself is still valid for days; the deleted account is
+what makes it fail.
+
+### M24.5 What the log shows, and never shows
+
+```bash
+L=logs/app/grocerysave-$(date -u +%F).log
+grep -o '"event":"\(login_failed\|login_succeeded\|user_registered\|registration_refused\|auth_rejected\)"[^}]*' $L | tail -15
+grep -c 'correct horse\|demo1234\|wrong horse' $L    # 0: no password
+grep -ci 'ana.silva\|nobody@\|demo@' $L              # 0: no email
+grep -c -F "${T:20:40}" $L                          # 0: no token
+```
+
+Expected: `user_registered` and `login_succeeded` records with a `userId`; `login_failed` with
+`reason` `wrong_password` (plus the `userId`) or `unknown_email` (no id);
+`registration_refused` with `email_taken`; `auth_rejected` at debug with `reason` `missing`,
+`malformed_header`, `expired`, `invalid` (with a `detail` such as `invalid signature`,
+`invalid algorithm`, `no expiry`, `subject is not a user id`) or `user_not_found`. The three
+counts are `0`. The skeleton server logs at debug; the real server will log at `LOG_LEVEL`
+(default info), where `auth_rejected` does not appear (D-123).
+
+### M24.6 In the browser (Vite dev server)
+
+Nothing serves the built client together with the API yet (the server process is a later stage,
+D-105), but the Vite dev server proxies `/api` to port 3001. With M24.2's server running:
+
+```bash
+npx vite --port 5173          # a third terminal; then open http://localhost:5173/login
+```
+
+| Step | Expected |
+|---|---|
+| Sign in as `demo@grocerysave.test` with a wrong password | the form shows `Invalid email or password` |
+| Sign in with `demo1234` | you land on `/lists` and the navbar shows `Demo Shopper` |
+| Reload the page | still signed in (the stored token is checked with `GET /api/auth/me`) |
+| In the browser console: `localStorage.setItem('grocerysave.token', 'garbage')`, then reload | you are sent to `/login`, and the stored token is gone |
+| Register `DEMO@grocerysave.test` (capitals) with any 8-character password | the form shows `An account with this email already exists` |
+| Register a new email, no name | signed in, and the navbar shows the email (D-124) |
+
+The lists page itself shows errors after login: `/api/lists`, `/api/households` and
+`/api/notifications` answer 404 until the next rounds add them.
+
+This was run with Playwright (headless Chromium) in this round:
+`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers bash tests/run-logged.sh ui-auth node logs/tests/ui/ui-auth.cjs`
+(`logs/tests/20261116T020742Z-ui-auth.log`: all six steps, plus the API calls the page made).
+Start the two servers first, as above, with `JWT_SECRET` set and a freshly reset database.
+
+### M24.7 Not verified yet, and open questions
+
+- **Open** (DECISIONS): D-119, whether internationalised emails (`josé@example.com`) must be accepted;
+  D-120, the 72-byte maximum, which is not in the spec; D-122, whether the server should warn or
+  refuse to start when `JWT_SECRET` is unset (it falls back to `dev-secret-change-me`).
+- No rate limiting or lockout on login (D-121), and no token revocation (D-122).
+- The timing of a failed login for an unknown email versus a wrong password is evened out with a dummy
+  bcrypt comparison, but not measured (a timing test would be flaky).
+
+## M25. Lists (API, round 3)
+
+What exists: `GET /api/lists`, `POST /api/lists`, `GET`, `PATCH` and `DELETE /api/lists/:id`
+(TECH_SPEC 6.3). Lists come with their items, most recently changed first. **A user sees only their
+own lists in this stage**; household sharing comes next, and the visibility condition is written to
+grow (D-125). A list someone else owns and a malformed id are both 404 `List not found` on every
+route. Choices: D-125 to D-131; also D-122 (the `JWT_SECRET` warning) and D-132/D-133. Everything
+below was run in this round; the outputs are the real ones (ids and times differ per run).
+
+### M25.1 The automated tests
+
+```bash
+export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/grocerysave_test
+bash tests/run-logged.sh unit npm run test:unit
+bash tests/run-logged.sh api  npm run test:api
+```
+
+| File | Project | Tests | What it checks |
+|---|---|---|---|
+| `server/src/services/__tests__/lists.test.ts` | unit | 6 | the owner-only rules with `member` access (which no one can reach through HTTP yet): a member may rename and resend the current household but gets 403 for changing it or deleting; unchanged values are dropped; `pathId`, `trimmedName` |
+| `server/tests/lists.test.ts` | api | 50 | see below |
+| `server/tests/app.test.ts` | api | +1 | the `jwt_secret_default` warning, once, only for the fallback secret, without the secret in it |
+
+`lists.test.ts`, against the real database, with two users (Ana and Bo):
+
+- **create**: 201 with the full list (trimmed name, caller as owner, `items: []`, ISO times);
+  `householdId` null / absent / a household the caller belongs to (owner or member, any case) is
+  kept, while any other household is 404 `Household not found`. 8 bad bodies are 400. 100
+  characters (and 100 emoji) are accepted; `ownerId`/`id`/`items` in the body are ignored.
+- **read**: a new user has `[]`. Newest change first, and creating or renaming moves a list to the
+  top; equal times give a stable order (D-127). Each list's items come by position, then creation,
+  with every `ListItem` field. **Query count**: 3 for 1 list and for 12 (no query per list). The
+  seeded demo user gets both lists (16 and 6 items, `Birthday candles` unmatched); the seeded
+  partner gets `[]` in this stage.
+- **two users**: Bo never sees Ana's lists. GET, PATCH and DELETE on Ana's list answer exactly like a
+  list that does not exist (404 `List not found`), and her list is untouched afterwards. A bad body
+  on her list is still 404. A list Ana shares with a household Bo belongs to is still hers alone (D-125).
+- **malformed ids**: 9 kinds (`abc`, no dashes, braces, `' OR '1'='1`, ...) are 404 for GET, PATCH
+  and DELETE, and Postgres never sees them (no `database_input_rejected` warning); an upper-case
+  id finds the list.
+- **PATCH**: rename gives 200 with the whole list, and `updatedAt` moves on while `createdAt` stays.
+  Five renames from a stored time an hour ahead keep increasing. Two changes inside one
+  transaction give two different `updatedAt`s (D-128). A PATCH **waits** for a change in progress
+  on the same list and decides on its result (the row lock, D-131). Resending the current values
+  changes nothing (same `updatedAt`, no log). Share, move and unshare work; a household the owner
+  is not in is 404 and nothing is applied. 9 bad bodies are 400 with the list unchanged.
+- **DELETE**: 204 with no body; the list and its items are gone, other lists stay; a second delete is 404.
+- **logs**: `list_created`, `list_updated` (`changed: ["name"]`) at info, without the list name.
+- **auth.test.ts** (D-117), automatically: the 5 list routes are in the route table and all answer
+  401 without a token.
+
+**The deliberate-bug check** (about 14 minutes; run it detached so it cannot be killed half-way):
+
+```bash
+setsid nohup bash tests/run-logged.sh lists-mutations bash logs/tests/lists-mutations.sh > /tmp/lists-mutations.out 2>&1 < /dev/null &
+tail -f /tmp/lists-mutations.out
+```
+
+It plants 24 bugs one at a time. Examples: everyone sees every list, a malformed id sent to Postgres,
+the wrong order, items not by position, `updated_at = now()` without the 1 ms step, one items query
+per list, household membership unchecked, a member allowed to move or delete, an empty PATCH
+accepted, the body checked before visibility, no row lock, DELETE answering 200, the list routes
+made public, the list name logged. Expected: 24 `caught` lines and `survivors: 0; patterns not
+found: 0` (`logs/tests/20261116T134032Z-lists-mutations.log`). Its first run found 3 gaps in the
+tests, since fixed: the item tie-break, the 1 ms step, and the row lock (D-128, D-131). If the
+script is interrupted (Ctrl+C, hangup), its trap puts back the file it had mutated (tested).
+`auth-mutations.sh` now has the same trap.
+
+### M25.2 Start the API and sign in as the two demo users
+
+```bash
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/grocerysave
+export JWT_SECRET=manual-check-secret
+npm run db:reset
+npx tsx tests/manual/api-skeleton.ts
+```
+
+The route table now lists `GET /api/lists`, `POST /api/lists`, `GET /api/lists/:id`,
+`PATCH /api/lists/:id`, `DELETE /api/lists/:id`, all `signed-in`. In a second terminal:
+
+```bash
+B=http://127.0.0.1:3001/api; J='Content-Type: application/json'; c() { curl -s -w ' %{http_code}\n' "$@"; }
+tok() { curl -s -H "$J" -d "{\"email\":\"$1\",\"password\":\"demo1234\"}" $B/auth/login | node -pe 'JSON.parse(require("fs").readFileSync(0)).token'; }
+TD=$(tok demo@grocerysave.test); TP=$(tok partner@grocerysave.test)
+summary() { node -e 'const d=JSON.parse(require("fs").readFileSync(0)); const ls=Array.isArray(d)?d:[d]; for (const l of ls) console.log(`${l.name} | ${l.items.length} items | shared: ${l.householdId?"yes":"no"} | updatedAt ${l.updatedAt}`); if(!ls.length) console.log("[]")'; }
+W=$(curl -s -H "Authorization: Bearer $TD" $B/lists | node -pe 'JSON.parse(require("fs").readFileSync(0)).find(l=>l.name==="Weekly basics").id')
+P=$(curl -s -H "Authorization: Bearer $TD" $B/lists | node -pe 'JSON.parse(require("fs").readFileSync(0)).find(l=>l.name==="Party supplies").id')
+```
+
+### M25.3 Reading
+
+| # | Command | Expected |
+|---|---|---|
+| 1 | `curl -s -H "Authorization: Bearer $TD" $B/lists \| summary` | `Party supplies \| 6 items \| shared: yes \| ...` and `Weekly basics \| 16 items \| shared: no \| ...` (same `updatedAt`: the seed made both in one transaction; the order between them is fixed by D-127) |
+| 2 | `curl -s -H "Authorization: Bearer $TD" $B/lists/$W \| node -pe 'const l=JSON.parse(require("fs").readFileSync(0)); JSON.stringify(l.items[0]) + "\n" + l.items.map(i=>i.name).join(", ")'` | `{"id":"...","listId":"...","name":"Milk","quantity":1,"unit":"gal","category":"Dairy","note":null,"productId":"...","completed":false}`, then `Milk, Olive oil, Chicken breast, Ground beef, Cheddar cheese, Eggs, Coffee, Butter, Laundry detergent, Toilet paper, Bananas, Salmon, Bread, Orange juice, Diapers, Pasta sauce` (position order) |
+| 3 | `c -H "Authorization: Bearer $TP" $B/lists` | `[] 200`: the partner is in "Demo household", but sees no shared lists in this stage (D-125) |
+| 4 | `c -H "Authorization: Bearer $TP" $B/lists/$W`; the same with `-X PATCH -H "$J" -d '{"name":"Hacked"}'` and with `-X DELETE`; and `c -H "Authorization: Bearer $TP" $B/lists/$P` | four times `{"error":"List not found"} 404` |
+| 5 | `c -H "Authorization: Bearer $TD" $B/lists/abc`, `c -H "Authorization: Bearer $TD" "$B/lists/1%20OR%201=1"`, `c -H "Authorization: Bearer $TD" $B/lists/3f0c6a9e-2b1d-4c8e-9a7f-1e2d3c4b5a69` | three times `{"error":"List not found"} 404`: malformed, injection-like and unknown ids look the same |
+| 6 | `c $B/lists` and `c -X POST -H "$J" -d '{"name":"x"}' $B/lists` | `{"error":"Authentication required"} 401` twice |
+
+### M25.4 Writing
+
+| # | Command | Expected |
+|---|---|---|
+| 7 | `c -H "Authorization: Bearer $TP" -H "$J" -d '{"name":"  Partner groceries  "}' $B/lists` | `{"id":"...","name":"Partner groceries","ownerId":"...","householdId":null,"items":[],"createdAt":"...","updatedAt":"<same as createdAt>"} 201` |
+| 8 | `curl -s -X PATCH -H "Authorization: Bearer $TD" -H "$J" -d '{"name":" Weekly shop "}' $B/lists/$W \| summary`, then `curl -s -H "Authorization: Bearer $TD" $B/lists \| summary` | `Weekly shop \| 16 items \| shared: no \| updatedAt <now>`; the list is now first, before Party supplies |
+| 9 | the same PATCH again with `'{"name":"Weekly shop"}'` | the same `updatedAt` as in 8: nothing changed, nothing bumped |
+| 10 | `for b in '{}' '{"name":""}' '{"name":42}' '{"householdId":"abc"}' '{"ownerId":"3f0c6a9e-2b1d-4c8e-9a7f-1e2d3c4b5a69"}'; do printf '%-55s ' "$b"; c -X PATCH -H "Authorization: Bearer $TD" -H "$J" -d "$b" $B/lists/$W; done` | `Nothing to change: send name and/or householdId` 400; `name: is required` 400; `name: must be text` 400; `householdId: must be a household id` 400; `Nothing to change: ...` 400 (the owner cannot be changed) |
+| 11 | `H=$(psql "$DATABASE_URL" -Atc "SELECT id FROM households WHERE name = 'Demo household'")`, then PATCH `{"householdId":"3f0c6a9e-2b1d-4c8e-9a7f-1e2d3c4b5a69"}`, `{"householdId":"'$H'"}` and `{"householdId":null}` on `$W` | `{"error":"Household not found"} 404`; then `Weekly shop \| ... \| shared: yes`; then `shared: no`, each with a later `updatedAt` |
+| 12 | `NEW=$(curl -s -H "Authorization: Bearer $TD" -H "$J" -d '{"name":"Temporary"}' $B/lists \| node -pe 'JSON.parse(require("fs").readFileSync(0)).id')`; `c -X DELETE -H "Authorization: Bearer $TD" $B/lists/$NEW` twice; `c -H "Authorization: Bearer $TD" $B/lists/$NEW` | ` 204` (no body), then `{"error":"List not found"} 404` twice |
+
+### M25.5 The log
+
+```bash
+L=logs/app/grocerysave-$(date -u +%F).log
+grep -o '"event":"list_[a-z]*"[^}]*' $L | sed 's/"message":"[^"]*",//' | tail -6
+grep -c 'Weekly shop\|Partner groceries\|Temporary' $L     # 0: list names are never logged
+```
+
+Expected: `list_created` (`shared: false`), `list_updated` with `changed: ["name"]`, twice
+`list_updated` with `changed: ["householdId"]`, `list_created`, `list_deleted`, each with
+`userId` and `listId`; then `0`. Step 9 logged nothing (nothing changed). Without `JWT_SECRET`
+the server's first record is `WARN app.http jwt_secret_default: JWT_SECRET is not set: ...`.
+
+### M25.6 In the browser: only the empty state
+
+With the API (M25.2) and `npx vite --port 5173` running, a new user's `/lists` shows "No lists yet"
+and the "Create list" form creates the list (`POST /api/lists` 201). **Any page that shows a list
+then fails with "Something went wrong" / `not implemented`**: `ListCard` and `groupByCategory`
+(`src/components/shopping-list/format.ts`) are client stubs (TECH_SPEC 7.3, D-133). That is the
+client, not the API. Run with Playwright in this round:
+`PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers bash tests/run-logged.sh ui-lists node logs/tests/ui/ui-lists.cjs`
+(`logs/tests/20261116T140618Z-ui-lists.log`). Rename and delete through the pages will be
+possible once those components exist.
+
+### M25.7 Not verified yet
+
+- Sharing: members seeing, renaming and being refused (403) through HTTP. The rules exist and are
+  unit-tested with `member` access (D-129), but the visibility condition only grows next stage (D-125).
+- The list endpoints through the real pages (D-133).
+- Item changes bumping the list's `updated_at` (items are read-only until the item endpoints exist).
+
+## M26. List items (API, round 4)
+
+What exists: `POST /api/lists/:id/items`, `PATCH /api/lists/:id/items/:itemId` and
+`DELETE /api/lists/:id/items/:itemId` (TECH_SPEC 6.3). Adding matches the name with `matchProduct`
+(API threshold 0.51, D-18): a match sets `productId`, the product's category and, by default, its
+unit; no match gives `Other` and `each`. Quantity must be greater than 0. A rename matches again,
+and other edits never touch the product. Items keep the order they were added in, and every item
+change bumps the list's `updated_at`. Choices: D-134 to D-141, with **two questions** (D-136, the
+unit on a rename; D-140, the add form always sends `each`). Everything below was run in this round;
+the outputs are the real ones.
+
+### M26.1 The automated tests
+
+```bash
+export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/grocerysave_test
+bash tests/run-logged.sh unit npm run test:unit
+bash tests/run-logged.sh api  npm run test:api
+```
+
+| File | Project | Tests | What it checks |
+|---|---|---|---|
+| `server/src/services/__tests__/items.test.ts` | unit | 12 | a new item's fields (match, product unit by default, explicit unit kept, no match); what a PATCH changes: non-name edits never consult the catalog, unchanged values dropped, the rename rules (another product, same product, no product, explicit unit, quantity untouched) |
+| `server/tests/items.test.ts` | api | 75 | see below |
+| `server/tests/lists.test.ts` | api | +2 | list names refuse control characters (D-139) |
+
+`items.test.ts`, against the real catalog (`seedCatalog`) and database:
+
+- **matching**: `milk`, `WHOLE MILK`, `gallon of milk`, `eggs`, `Bananas`, `olive oil` and `Salmon
+  fillet` get their product, category and unit. `Birthday candles`, `almond milk`, `chicken
+  thighs`, `olive` and `xyz` match nothing (`Other`, `each`). An explicit unit and quantity are
+  kept, `each` included. Units are canonical (`KG` to `kg`, `lbs` to `lb`, `Doz.` to `dozen`),
+  others kept as typed. The note is trimmed, empty or null means none. Quantities are stored to 3
+  decimals. `productId`, `category`, `completed`, `listId` in the body are ignored. 18 bad bodies
+  are 400 and add nothing; the exact limits (120 / 200 / 20) pass.
+- **order**: new items go last, also after deletions and completions and after seeded positions;
+  edits never reorder; **10 simultaneous additions** give positions 0 to 9.
+- **the list bump**: adding, each kind of edit (completed, quantity, unit, note, name) and removing
+  move the list's `updatedAt` and bring it to the top; rapid changes give strictly increasing values;
+  a change that changes nothing, and a refused one, do not bump.
+- **PATCH**: non-name edits keep the product (even one set by hand); the edit form's
+  `{ quantity, unit, note }`; renaming to another product, no product, back to a product; the unit
+  on a rename (D-136); 16 bad bodies are 400 with the item unchanged.
+- **DELETE**: 204 with no body, the others stay in order, a second delete is 404.
+- **not found**: another user's list is 404 `List not found` on all three routes (a bad body too),
+  and nothing changes. An item of another list, even your own, is `Item not found`. Malformed list
+  and item ids are 404 without reaching Postgres. A malformed item id on someone else's list says
+  `List not found`.
+- **logs**: `item_added`, `item_updated` (with the changed fields), `item_removed`, without names or notes.
+
+**The deliberate-bug check** (about 9 minutes; run it detached):
+
+```bash
+setsid nohup bash tests/run-logged.sh items-mutations bash logs/tests/items-mutations.sh > /tmp/items-mutations.out 2>&1 < /dev/null &
+tail -f /tmp/items-mutations.out
+```
+
+It plants 27 bugs one at a time. Examples: the explicit unit dropped, the unit never defaulting to
+the product's, threshold 0.5 instead of 0.51, position = number of items, no list lock when adding,
+each of add/edit/remove not bumping the list, the bump without the 1 ms step, rename not matching
+again, every edit matching again, the three unit-on-rename rules, quantity 0 accepted or not rounded,
+units not normalised, an item of any list editable, the item checked before the list, adding to
+anyone's list, the item name logged. Expected: 27 `caught` lines, `survivors: 0; patterns not
+found: 0` (`logs/tests/20261117T002108Z-items-mutations.log`). The missing-lock bug is caught by
+the 10-simultaneous-additions test, a concurrency test; removing the lock by hand and running that
+test 5 times failed it 5 times out of 5.
+
+### M26.2 Start the API and sign in
+
+As in M25.2 (`npm run db:reset`, `JWT_SECRET`, `npx tsx tests/manual/api-skeleton.ts`); the route
+table now also lists `POST /api/lists/:id/items`, `PATCH /api/lists/:id/items/:itemId`,
+`DELETE /api/lists/:id/items/:itemId`, all `signed-in`. In a second terminal:
+
+```bash
+export JWT_SECRET=manual-check-secret
+B=http://127.0.0.1:3001/api; J='Content-Type: application/json'
+c() { curl -s -w ' %{http_code}' "$@" | node tests/manual/summarize.mjs; }
+tok() { curl -s -H "$J" -d "{\"email\":\"$1\",\"password\":\"demo1234\"}" $B/auth/login | node -pe 'JSON.parse(require("fs").readFileSync(0)).token'; }
+TD=$(tok demo@grocerysave.test); TP=$(tok partner@grocerysave.test); A="Authorization: Bearer $TD"
+L=$(curl -s -H "$A" -H "$J" -d '{"name":"Items demo"}' $B/lists | node -pe 'JSON.parse(require("fs").readFileSync(0)).id')
+```
+
+### M26.3 Adding items
+
+| # | Command | Expected |
+|---|---|---|
+| 1 | `c -H "$A" -H "$J" -d '{"name":"  milk "}' $B/lists/$L/items` | `milk \| 1 gal \| Dairy \| product yes \| note null \| completed false  201` (matched; unit from the product) |
+| 2 | `c -H "$A" -H "$J" -d '{"name":"Birthday candles","quantity":2}' $B/lists/$L/items` | `Birthday candles \| 2 each \| Other \| product none \| ...  201` (no match) |
+| 3 | `c -H "$A" -H "$J" -d '{"name":"eggs","unit":"EA","quantity":0.33333,"note":"  free range "}' $B/lists/$L/items` | `eggs \| 0.333 each \| Dairy \| product yes \| note "free range" \| ...  201` (explicit unit kept, written `each`; 3 decimals; note trimmed) |
+| 4 | `c -H "$A" -H "$J" -d '{"name":"milk","unit":"l","quantity":2}' $B/lists/$L/items` | `milk \| 2 l \| Dairy \| product yes \| ...  201` |
+| 5 | `c -H "$A" -H "$J" -d '{"name":"almond milk"}' $B/lists/$L/items` | `almond milk \| 1 each \| Other \| product none \| ...  201` (not Whole Milk: the 0.51 threshold, D-18) |
+| 6 | `for b in '{"name":"x","quantity":0}' '{"name":"x","quantity":-1}' '{"name":"x","quantity":"2"}' '{"name":""}' '{"name":"x","unit":""}'; do printf '%-28s ' "$b"; c -H "$A" -H "$J" -d "$b" $B/lists/$L/items; done` | `quantity: must be greater than 0` (twice), `quantity: must be a number`, `name: is required`, `unit: must not be empty`, each `400` |
+| 7 | `c -H "$A" $B/lists/$L` | `Items demo \| 5 items: milk, Birthday candles, eggs, milk, almond milk \| ...  200` (the order they were added) |
+
+### M26.4 Editing
+
+```bash
+I=$(curl -s -H "$A" $B/lists/$L | node -pe 'JSON.parse(require("fs").readFileSync(0)).items[0].id')
+```
+
+| # | Command | Expected |
+|---|---|---|
+| 8 | `c -X PATCH -H "$A" -H "$J" -d '{"quantity":1.5,"unit":"kg","note":"organic"}' $B/lists/$L/items/$I` | `milk \| 1.5 kg \| Dairy \| product yes \| note "organic" \| ...  200` (the product stays) |
+| 9 | *Changed in round 5 (D-136: a rename starts the item afresh).* See M27.4 for the current steps and outputs | |
+| 10 | `c -X PATCH -H "$A" -H "$J" -d '{"completed":true}' $B/lists/$L/items/$I`, twice | `... completed true  200` both times; the second changes nothing (not logged, no bump) |
+| 11 | PATCH `{}`, `{"quantity":0}`, `{"completed":"yes"}`, `{"productId":"3f0c6a9e-2b1d-4c8e-9a7f-1e2d3c4b5a69"}` | `Nothing to change: send name, quantity, unit, note and/or completed`; `quantity: must be greater than 0`; `completed: must be true or false`; `Nothing to change: ...` (the product link cannot be set by hand); each `400` |
+
+### M26.5 The list moves to the top
+
+```bash
+W=$(curl -s -H "$A" $B/lists | node -pe 'JSON.parse(require("fs").readFileSync(0)).find(l=>l.name==="Weekly basics").id')
+WI=$(curl -s -H "$A" $B/lists/$W | node -pe 'JSON.parse(require("fs").readFileSync(0)).items[0].id')
+curl -s -H "$A" $B/lists | node -pe 'JSON.parse(require("fs").readFileSync(0)).map(l=>l.name+"  "+l.updatedAt).join("\n")'
+c -X PATCH -H "$A" -H "$J" -d '{"completed":true}' $B/lists/$W/items/$WI
+curl -s -H "$A" $B/lists | node -pe 'JSON.parse(require("fs").readFileSync(0)).map(l=>l.name+"  "+l.updatedAt).join("\n")'
+```
+
+Expected: first `Items demo`, `Party supplies`, `Weekly basics`; then `Milk | 1 gal | Dairy | product
+yes | note null | completed true  200`; then **`Weekly basics` first**, with a new `updatedAt`: ticking
+one item moved the whole list to the top (D-137).
+
+### M26.6 Removing, and what is not yours
+
+| # | Command | Expected |
+|---|---|---|
+| 12 | `c -X DELETE -H "$A" $B/lists/$L/items/$I` twice, then `c -H "$A" $B/lists/$L` | `(no body)  204`; `{"error":"Item not found"}  404`; `Items demo \| 4 items: Birthday candles, eggs, milk, almond milk \| ...` |
+| 13 | as the partner: `c -H "Authorization: Bearer $TP" -H "$J" -d '{"name":"sneaky"}' $B/lists/$W/items` and `c -X PATCH -H "Authorization: Bearer $TP" -H "$J" -d '{"completed":false}' $B/lists/$W/items/$WI` | `{"error":"List not found"}  404` twice |
+| 14 | `c -X PATCH -H "$A" -H "$J" -d '{"completed":false}' $B/lists/$L/items/$WI` (a real item, of the other list) and `.../items/abc` | `{"error":"Item not found"}  404` twice |
+| 15 | `c -X DELETE -H "$A" $B/lists/abc/items/$WI` | `{"error":"List not found"}  404` |
+
+### M26.7 The log
+
+```bash
+L2=logs/app/grocerysave-$(date -u +%F).log
+grep -o '"event":"item_[a-z]*"[^}]*' $L2 | sed 's/"message":"[^"]*",//; s/"userId":"[^"]*",//; s/"listId":"[^"]*",//' | tail -13
+grep -c 'Bananas\|balloons\|free range\|organic\|candles' $L2      # 0: no item names or notes
+```
+
+Expected: five `item_added` (`matched: true` with a `productId`, or `matched: false`), then
+`item_updated` records with the changed fields (since round 5 a rename also lists `quantity`
+and `unit` whenever they are reset, D-136), `["completed"]` (once: step 10's repeat changed
+nothing), and `["completed"]` for the Weekly basics item; then `item_removed`; then `0`.
+
+### M26.8 In the browser: not yet
+
+The item form and rows are on the list detail page, which still fails on the client stubs
+(`groupByCategory` in `shopping-list/format.ts`, `ListItemRow`; TECH_SPEC 7.3, D-133). The add form
+was read, not run. That is how the question of D-140 came up: it always sends `unit`, starting on
+`each`.
+
+### M26.9 Not verified yet, and open questions
+
+- ~~Questions D-136, D-140~~: answered in round 5 (M27).
+- Members adding and editing items of a shared list (TECH_SPEC 6.3 allows it): the code checks
+  visibility only, so it works as soon as sharing makes the list visible (D-125), but that is not
+  tested yet.
+- Bulk add and import (`/items/bulk`, `/import`) are a later round.
+
+## M27. Bulk add and import (API, round 5)
+
+What exists: `POST /api/lists/:id/items/bulk` `{ items }` and `POST /api/lists/:id/import`
+`{ format: "text" | "csv", content }` (TECH_SPEC 6.3). Both answer 201 `{ items, matched }` and
+write all items or none. Content is parsed with the stage-1 parsers (`parseListText`,
+`parseListCsv`), the same the client previews with. Also in this round, the answers to round 4's
+questions: **a rename resets unit and quantity** (D-136), and **the add form's unit starts on
+`auto`** (D-140 option A, D-142). Choices: D-142 to D-148, with **one question** (D-147: pasted
+items without a unit come in as `each`). Everything below was run in this round; the outputs are the
+real ones.
+
+### M27.1 The automated tests
+
+```bash
+export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/grocerysave_test
+bash tests/run-logged.sh unit npm run test:unit
+bash tests/run-logged.sh web  npm run test:web
+bash tests/run-logged.sh api  npm run test:api
+```
+
+| File | Project | Tests | What it checks |
+|---|---|---|---|
+| `server/tests/import.test.ts` | api | 55 | see below |
+| `src/components/shopping-list/__tests__/AddItemForm.test.tsx` | web | 5 | the unit menu starts on `auto` (then `ITEM_UNITS`); with `auto` no unit is sent; a picked unit is sent (`each` too); after an add the menu goes back to `auto`; after a refused add the choice stays |
+| `server/src/services/__tests__/items.test.ts` | unit | 13 | the rename rule: product, category, unit and quantity as for a new item; same product resets too; no match gives `each`, 1; a unit or quantity sent with the rename wins; note and completed survive; a case-only change is a rename |
+| `server/tests/items.test.ts` | api | 76 | the rename rule through HTTP, including the product owner's "milk" to "oat milk" example |
+
+`import.test.ts`, against the real catalog and database:
+
+- **text**: one item per line, in order, after the items already there; matched to the catalog
+  (`matched` counts them); bullets, notes, `x3`, comments; equal lines merged; the parsed unit kept
+  (`each` included, D-147); CRLF and CR.
+- **csv**: header, empty quantity gives 1, unknown unit gives `each`, quoted commas, nameless rows
+  skipped, no merging. **All 8 stage-1 sample files** give exactly what the parser gives.
+- **bulk**: items as given, in order; a missing unit gets the product's unit; units canonical;
+  `productId` and the like ignored; **exactly 500 items with one INSERT statement** and positions 0 to 499.
+- **the list moves to the top** after an import and after a bulk add.
+- **400s**: 16 import cases (no or unknown format, `CSV` in capitals, content missing or not text,
+  empty, blank, comments only, empty CSV, header only, nameless rows, 501 lines, 501 rows, a list as
+  body) and 9 bulk cases. After each: no items, list not bumped. 600 lines with 500 distinct
+  names are accepted.
+- **all or nothing**: one bad item among 301 refuses the bulk add. A parsed item breaking a rule
+  refuses the import and is named. A database failure **after** the items were written (the list
+  bump, made to fail by a trigger) leaves nothing, and so does a failure on one row of the INSERT.
+  An import, a bulk add and a single add **wait** for an addition in progress on the same list and go
+  after it (the lock). Two simultaneous imports keep their items together.
+- **not found**: someone else's, unknown and malformed lists are 404 `List not found` for both
+  routes, even with a bad body.
+- **logs**: `items_imported` with `source`, `count`, `matched`, never the content.
+
+**The deliberate-bug checks** (about 20 minutes for both; run them detached, one after the other:
+they share the test database):
+
+```bash
+# from the repository root, with TEST_DATABASE_URL set
+cat > /tmp/run-both.sh <<EOS
+cd $(pwd)
+export TEST_DATABASE_URL=$TEST_DATABASE_URL
+bash tests/run-logged.sh items-mutations  bash logs/tests/items-mutations.sh  > /tmp/items-mutations.out 2>&1
+bash tests/run-logged.sh import-mutations bash logs/tests/import-mutations.sh > /tmp/import-mutations.out 2>&1
+EOS
+setsid nohup bash /tmp/run-both.sh > /dev/null 2>&1 < /dev/null &
+tail -f /tmp/items-mutations.out        # then /tmp/import-mutations.out
+```
+
+`import-mutations.sh` plants 20 bugs. Examples: no transaction, one INSERT per item, no list lock,
+every item at the same position, no list bump, limits 501 or none, empty imports and bulk adds
+accepted, CSV parsed as text, an unknown format read as text, parsed items not checked, `matched`
+counting everything, the body checked before the list, 200 instead of 201, the content logged, and
+four bugs in the add form. Expected: 20 `caught`, `survivors: 0; patterns not found: 0`
+(`logs/tests/20261117T013013Z-import-mutations.log`). Its first run found the lock untested for
+import and bulk; the deterministic lock test was added for it (D-143). `items-mutations.sh` was
+updated for the new rename rule and the shared insert: 29 `caught`, `survivors: 0`
+(`logs/tests/20261117T012612Z-items-mutations.log`).
+
+### M27.2 Start the API and sign in
+
+As in M26.2 (`npm run db:reset`, `JWT_SECRET`, `npx tsx tests/manual/api-skeleton.ts`; the route
+table now also lists `POST /api/lists/:id/items/bulk` and `POST /api/lists/:id/import`). In a second
+terminal, from the repository root:
+
+```bash
+export JWT_SECRET=manual-check-secret
+B=http://127.0.0.1:3001/api; J='Content-Type: application/json'
+c() { curl -s -w ' %{http_code}' "$@" | node tests/manual/summarize.mjs; }
+tok() { curl -s -H "$J" -d "{\"email\":\"$1\",\"password\":\"demo1234\"}" $B/auth/login | node -pe 'JSON.parse(require("fs").readFileSync(0)).token'; }
+TD=$(tok demo@grocerysave.test); TP=$(tok partner@grocerysave.test); A="Authorization: Bearer $TD"
+L=$(curl -s -H "$A" -H "$J" -d '{"name":"Import demo"}' $B/lists | node -pe 'JSON.parse(require("fs").readFileSync(0)).id')
+# imp <format> <content>: sends an import and prints "matched N of M" and one line per item
+imp() { node -e 'const [f,c]=process.argv.slice(1); console.log(JSON.stringify({format:f, content:c}))' "$1" "$2" | curl -s -w ' %{http_code}' -H "$A" -H "$J" -d @- $B/lists/$L/import | node -e 'const t=require("fs").readFileSync(0,"utf8"); const m=/ (\d{3})$/.exec(t); const o=JSON.parse(t.slice(0,m.index)); if (o.error) console.log(JSON.stringify(o)+"  "+m[1]); else { console.log(`matched ${o.matched} of ${o.items.length}  ${m[1]}`); for (const i of o.items) console.log(`  ${i.name} | ${i.quantity} ${i.unit} | ${i.category} | product ${i.productId?"yes":"none"} | note ${JSON.stringify(i.note)}`) }'; }
+```
+
+### M27.3 Import and bulk add
+
+**1. Pasted text:** `imp text $'2 milk\n- eggs (free range)\nbananas x3\n\n# a comment\nBirthday candles\n1.5 kg rice\nMilk'`
+
+```
+matched 4 of 5  201
+  milk | 3 gal | Dairy | product yes | note null          <- "2 milk" and "Milk" merged; no unit written: the product's (D-147, since round 6)
+  eggs | 1 dozen | Dairy | product yes | note "free range"
+  bananas | 3 lb | Produce | product yes | note null
+  Birthday candles | 1 each | Other | product none | note null   <- no product: each
+  rice | 1.5 kg | Pantry | product yes | note null         <- unit written: kept
+```
+
+**2. CSV:** `imp csv $'name,quantity,unit,note\nrice,1.5,kg,\ncoffee,,,dark roast\n"Salt, fine",2,box,\n,3,kg,no name\ncandles,2,tub,pink'`
+
+```
+matched 2 of 4  201
+  rice | 1.5 kg | Pantry | product yes | note null
+  coffee | 1 bag | Beverages | product yes | note "dark roast"      <- empty quantity is 1; empty unit cell: the product's (D-147)
+  Salt, fine | 2 box | Other | product none | note null             <- quoted comma; "box" is a unit
+  candles | 2 each | Other | product none | note "pink"             <- "tub" is not a unit: each; the nameless row is skipped
+```
+
+**3. A sample file:**
+`node -e 'console.log(JSON.stringify({format:"csv", content:require("fs").readFileSync("tests/manual/samples/03-client-template.csv","utf8")}))' | curl -s -H "$A" -H "$J" -d @- $B/lists/$L/import | node -pe 'const o=JSON.parse(require("fs").readFileSync(0)); `matched ${o.matched} of ${o.items.length}: ` + o.items.map(i=>i.name).join(", ")'`
+gives `matched 4 of 4: Milk, Bananas, Chicken breast, Rice`.
+
+**4. Bulk:** `curl -s -w ' %{http_code}\n' -H "$A" -H "$J" -d '{"items":[{"name":"olive oil","quantity":1,"unit":"bottle"},{"name":"salmon fillet","quantity":2,"unit":"lb","note":"wild"},{"name":"milk"}]}' $B/lists/$L/items/bulk`
+gives 201 with `matched` 3: `olive oil 1 bottle`, `salmon fillet 2 lb`, and `milk 1 gal` (no unit sent: the product's, D-144).
+
+**5.** `c -H "$A" $B/lists/$L` lists the 16 items of steps 1 to 4 in the order they came, after
+anything added before: `... milk, eggs, bananas, Birthday candles, rice, rice, coffee, Salt, fine,
+candles, Milk, Bananas, Chicken breast, Rice, olive oil, salmon fillet, milk`.
+
+**6. Failures** (each `400`, and nothing is added: step 7 still counts the same items):
+
+| Command | Expected |
+|---|---|
+| `imp xml milk` | `format: must be "text" or "csv"` |
+| `imp text $'  \n\n'` and `imp text '# only a comment'` | `content: no items found in the text` |
+| `imp csv $'name,quantity\n'` | `content: no items found in the CSV` |
+| `imp text "$(node -e 'console.log(Array.from({length:501},(_,i)=>`item ${i}`).join("\n"))')"` | `content: at most 500 items at a time (found 501)` |
+| `imp text "$(node -e 'console.log("milk\n" + "y".repeat(130))')"` | `content: item 2 ("yyyy...yyyy..."): name: must be at most 120 characters` (the whole import is refused) |
+| `curl ... -d '{"format":"text"}' $B/lists/$L/import`; `-d '{"content":"milk"}'`; `-d '{}'` | `content: is required`; `format: is required`; `format: is required; content: is required` |
+| `curl ... -d '{}' $B/lists/$L/items/bulk`; `-d '{"items":[]}'`; `-d '{"items":[{"name":"milk"},{"name":"eggs","quantity":0}]}'` | `items: is required`; `items: must contain at least 1 item`; `items.1.quantity: must be greater than 0` (milk is not added either) |
+| 501 bulk items: `node -e 'console.log(JSON.stringify({items: Array.from({length:501},(_,i)=>({name:`x${i}`}))}))' \| curl -s -w ' %{http_code}\n' -H "$A" -H "$J" -d @- $B/lists/$L/items/bulk` | `items: must contain at most 500 items` |
+
+**7.** `curl -s -H "$A" $B/lists/$L | node -pe 'JSON.parse(require("fs").readFileSync(0)).items.length'`: the same count as before step 6.
+
+**8. Someone else's list:** `W` = the demo user's "Weekly basics" id (as in M26.5); as the partner,
+`curl -s -w ' %{http_code}\n' -H "Authorization: Bearer $TP" -H "$J" -d '{"format":"text","content":"milk"}' $B/lists/$W/import`
+and the same to `/items/bulk` with `{"items":[{"name":"milk"}]}`: `{"error":"List not found"} 404` twice.
+
+### M27.4 The round-4 answers: rename and the add form
+
+| # | Command | Expected |
+|---|---|---|
+| 1 | `I=$(curl -s -H "$A" -H "$J" -d '{"name":"milk","quantity":2,"unit":"l","note":"semi"}' $B/lists/$L/items \| node -pe 'JSON.parse(require("fs").readFileSync(0)).id')` | (an item "milk, 2 l") |
+| 2 | `c -X PATCH -H "$A" -H "$J" -d '{"name":"Bananas"}' $B/lists/$L/items/$I` | `Bananas \| 1 lb \| Produce \| product yes \| note "semi" \| completed false  200`: unit and quantity reset, note kept |
+| 3 | `c -X PATCH -H "$A" -H "$J" -d '{"quantity":6,"unit":"bunch"}' $B/lists/$L/items/$I` | `Bananas \| 6 bunch \| ...  200`: the user sets them again |
+| 4 | `c -X PATCH -H "$A" -H "$J" -d '{"name":"oat milk"}' $B/lists/$L/items/$I` | `oat milk \| 1 each \| Other \| product none \| ...  200`: the product owner's example |
+| 5 | `c -X PATCH -H "$A" -H "$J" -d '{"name":"whole milk","quantity":3,"unit":"l"}' $B/lists/$L/items/$I` | `whole milk \| 3 l \| Dairy \| product yes \| ...  200`: values sent with the rename win |
+| 6 | `c -X DELETE -H "$A" $B/lists/$L/items/$I` | `(no body)  204` |
+| 7 | what the add form sends with `auto`: `c -H "$A" -H "$J" -d '{"name":"milk","quantity":1}' $B/lists/$L/items` | `milk \| 1 gal \| Dairy \| product yes \| ...  201` (the product's unit, D-142) |
+
+The form itself is covered by the web test (M27.1). The page that holds it (the list detail page)
+still fails on the client stubs (D-133), so it was not tried in a browser.
+
+### M27.5 The log
+
+```bash
+grep -o '"event":"items_imported"[^}]*' logs/app/grocerysave-$(date -u +%F).log | sed 's/"message":"[^"]*",//; s/"userId":"[^"]*",//; s/"listId":"[^"]*",//'
+grep -c 'free range\|dark roast\|Salt, fine\|salmon' logs/app/grocerysave-$(date -u +%F).log   # 0
+```
+
+Expected: `"source":"text","count":5,"matched":4`, `"source":"csv","count":4,"matched":2`,
+`"source":"csv","count":4,"matched":4`, `"source":"bulk","count":3,"matched":3`, then `0`. The refused
+imports of step 6 logged nothing at info.
+
+### M27.6 Not verified yet, and open questions
+
+- ~~Question D-147~~: answered in round 6, option A (pasted or uploaded items without a unit get the product's unit).
+- The bulk form in the browser (the detail page fails on client stubs, D-133).
+- Content near the 1 MB body limit: a file of that size is far over 500 items anyway, but it gets
+  413 (`Request body is too large`) before it is parsed, not the 500-item message.
+
+## M28. Security pass (API, round 6)
+
+What was asked: with two users, prove that user B cannot read, rename, add items to, edit items of,
+delete items of, import into, compare or delete user A's list, on every route, showing the status
+each gets; show what `password_hash` stores and what register, login and `/me` answer; check that
+user input never reaches SQL as text; fix what is not right. Decisions: D-149 to D-153 (and the
+residual risks listed after them). Also in this round: D-147, option A (imports without a unit get
+the product's unit), so M27.3 steps 1 and 2 now show `gal`, `dozen`, `lb` and `bag`.
+
+Everything below was run in this round. The three evidence tools print Markdown; their complete
+output of this round is in `logs/tests/` (names below).
+
+### M28.1 The evidence report: two users, every route
+
+```bash
+export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/grocerysave_test
+LOG_LEVEL=silent bash tests/run-logged.sh security-check npx tsx tests/manual/security-check.ts
+```
+
+(It empties the test database.) Expected last line: `All checks passed.`, exit 0: 120 checks, 0 failed (`logs/tests/20261117T021244Z-security-check.log` holds the complete report). The report has six parts.
+
+**1. What register, login and /me answer**: the full answers (status, `content-type`,
+`cache-control`, `x-content-type-options`, body). Register gives `{"token": "...", "user": {"id":
+"...", "email": "alice@example.com", "displayName": "Alice"}}`: the email trimmed and lower-cased,
+no other field. Then the decoded token (`{"alg":"HS256","typ":"JWT"}` and `{"iat":...,"exp":...,
+"sub":"<Alice's id>"}`), and 8 checks, all PASS. Among them: the bodies have exactly the keys
+`token` / `user` and `id` / `email` / `displayName`, and no answer contains the password, a bcrypt
+hash or the word "password".
+
+**2. What the users table stores**: the columns of `users`, then (real values from a run of this round; every run makes new salts, so your hashes differ):
+
+| email | display_name | password_hash | length |
+|---|---|---|---|
+| alice@example.com | Alice | `$2a$10$muGgwUkU2hBnyzwzAVsau.U5xH0xrSu7JRQwDDvgf8osD3vhK773.` | 60 |
+| bob@example.com | Bob | `$2a$10$RGDT6yE3IK7lU2BrmMr0YOouHdNCzJn2/aVvlj3UAfFY4cI2UCkoO` | 60 |
+
+Both users have the same password (`Correct horse 42`), and the hashes differ (each has its own salt).
+`$2a$` is bcrypt, `10` the cost, then 22 characters of salt and 31 of hash. The checks confirm
+that `bcrypt.compare(password, hash)` is true, that no hash contains the password, and that
+`password_hash` is the only column about the password.
+
+**3. Bob against every route of Alice's list** (real output):
+
+| # | Bob tries to | Request | Bob gets | Bob's answer | Alice's list unchanged | Alice on her own list |
+|---|---|---|---|---|---|---|
+| 1 | read the list | `GET /api/lists/:id` | 404 | `{"error":"List not found"}` | yes | 200 |
+| 2 | rename the list | `PATCH /api/lists/:id` | 404 | `{"error":"List not found"}` | yes | 200 |
+| 3 | move the list to his household | `PATCH /api/lists/:id` | 404 | `{"error":"List not found"}` | yes | 200 |
+| 4 | rename, with a bad body | `PATCH /api/lists/:id` | 404 | `{"error":"List not found"}` | yes | 400 |
+| 5 | add an item | `POST /api/lists/:id/items` | 404 | `{"error":"List not found"}` | yes | 201 |
+| 6 | edit an item | `PATCH /api/lists/:id/items/:itemId` | 404 | `{"error":"List not found"}` | yes | 200 |
+| 7 | delete an item | `DELETE /api/lists/:id/items/:itemId` | 404 | `{"error":"List not found"}` | yes | 204 |
+| 8 | bulk-add items | `POST /api/lists/:id/items/bulk` | 404 | `{"error":"List not found"}` | yes | 201 |
+| 9 | import text | `POST /api/lists/:id/import` | 404 | `{"error":"List not found"}` | yes | 201 |
+| 10 | import CSV | `POST /api/lists/:id/import` | 404 | `{"error":"List not found"}` | yes | 201 |
+| 11 | compare prices | `GET /api/lists/:id/comparison` | 404 | `{"error":"Not found: GET /api/lists/..."}` | yes | 404: **route not built yet** |
+| 12 | optimise the purchase | `GET /api/lists/:id/optimization` | 404 | `{"error":"Not found: GET /api/lists/..."}` | yes | 404: **route not built yet** |
+| 13 | delete the list | `DELETE /api/lists/:id` | 404 | `{"error":"List not found"}` | yes | 204 |
+
+"Unchanged" means the SHA-256 of Alice's list row and of every column of every item is the same
+before and after Bob's request. The last column is Alice doing the same on a fresh list of her own,
+so each route is shown to work. Rows 11 and 12 prove nothing yet: comparison does not exist, so
+everyone gets the unknown-path 404 (D-149). The report also checks that every `/api/lists/:id`
+route in the app's route table has a row, that Bob's `GET /api/lists` does not contain Alice's list,
+that Bob on Alice's list gets **byte-for-byte** the answer for a list id that does not exist, and that
+Alice's id in capitals is 404 too.
+
+**4. Indirect attempts**: Bob editing or deleting Alice's item through **his own** list id (404
+`Item not found`); creating a list in Alice's household, or moving his own list into it (404
+`Household not found`); sending `ownerId: <Alice>` (the list is his), `listId: <Alice's list>` in
+bulk items (they land in his list), or a `productId` of his choice (ignored).
+
+**5. No token, `Bearer garbage`, and Alice's id in a token signed with another secret**, on each of the
+11 signed-in routes: 401 everywhere. `OPTIONS` on a list route without a token: 404 (D-151).
+
+**6. SQL-looking input**: six payloads (`INJ1'); DROP TABLE users; --`, `INJ2' OR '1'='1`,
+`INJ3"; SELECT pg_sleep(3); --`, `INJ4 \'; DELETE FROM shopping_lists; --`,
+`INJ5' UNION SELECT password_hash FROM users --`, `INJ6 $1 $$ %s {0} ${x} E'\x41'`) through 11 inputs
+each. Every one is stored and returned exactly as sent, or refused where a text cannot be valid: a
+path id gives 404, `householdId` 400, and login 401. No request took longer than about 300 ms
+(`pg_sleep(3)` never ran). The tables still exist, Postgres refused no input during the run, and
+no request answered 500.
+
+### M28.2 Postgres's own log: input arrives as parameters, never as SQL
+
+```bash
+export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/grocerysave_test
+bash tests/run-logged.sh sql-injection-evidence bash tests/manual/sql-injection-evidence.sh   # [postgres log file]
+```
+
+It turns on `log_statement = 'all'` for the **test database only**, runs the report of M28.1 with a
+marker unique to the run (`INJ<time>X`) in every payload, resets the setting (also on Ctrl+C), and
+sorts the logged entries that contain the marker. The log file defaults to `~/.local/gs-postgres.log`
+(MANUAL_TESTING 0.5). Expected (this round's final run, `logs/tests/20261117T021219Z-sql-injection-evidence.log`; the first run, `...015201Z...`, gave the same counts):
+
+```
+Postgres log entries written during the run: 1239; statements executed: 732.
+Entries containing the marker "INJ1794881539X": 48
+  - as a bind-parameter value (DETAIL: parameters: ...):   48
+  - anywhere else (SQL text, an error, a statement echo): 0
+
+  SQL:    INSERT INTO shopping_lists AS l (owner_id, name, household_id) VALUES ($1, $2, $3) RETURNING ...
+  values: $1 = '...', $2 = 'INJ1794881539X1''); DROP TABLE users; --', $3 = NULL
+  ...
+OK: every value carrying the marker reached Postgres as a bind parameter, never as SQL text.
+```
+
+Check afterwards that the setting is gone:
+`psql "$TEST_DATABASE_URL" -Atc "SHOW log_statement"` gives `none` in a new session.
+
+**That the check can fail**: with a query changed to paste the list name into its SQL
+(`VALUES ($1, '${name}', $2)`), the same log shows the payload in a `STATEMENT` entry
+(`... VALUES ($1, 'INJ6 $1 $$ %s {0} ${x} E'\x41'', $2) ...`) and `sql-log-check.ts` prints `FAILED`.
+
+### M28.3 The static audit of every SQL statement
+
+```bash
+bash tests/run-logged.sh sql-audit npx tsx tests/manual/sql-audit.ts
+```
+
+It lists all 58 `.query()` calls in `server/src` (tests excluded) and what is interpolated into their
+SQL text. Expected: `Statements whose SQL text is provably fixed: 54 of 58`, then 4 interpolations,
+each `reviewed:` with its reason (the two `SET` lists built from fixed column names, the migration
+files, seed's `upsert` with fixed SQL from its callers), and `OK: no user input can reach the SQL
+text of any statement.` (`logs/tests/20261117T015301Z-sql-audit.log`). The unit test
+`server/src/__tests__/sqlAudit.test.ts` runs it in `npm run test:unit`. With the planted
+`'${name}'`, the audit prints `FAILED: 1 interpolation(s) not reviewed` and exits 1.
+
+### M28.4 What was fixed, before and after
+
+| # | Finding | Before (real) | After |
+|---|---|---|---|
+| F1 (D-150) | API answers without cache and sniffing directives | `curl -s -D - -o /dev/null -H 'Content-Type: application/json' -d '{"email":"demo@grocerysave.test","password":"demo1234"}' $B/auth/login`: `Content-Type`, `Content-Length`, `ETag`, `Date`, ... and no `Cache-Control` | `cache-control: no-store` and `x-content-type-options: nosniff` on every `/api` answer (report part 1) |
+| F2 (D-151) | `OPTIONS` answered 200 without a token | `curl -s -i -X OPTIONS $B/lists/3f0c6a9e-2b1d-4c8e-9a7f-1e2d3c4b5a69`: `HTTP/1.1 200 OK`, `Allow: GET,HEAD,PATCH,DELETE`, `Content-Type: text/html`, body `GET,HEAD,PATCH,DELETE` | `404 {"error":"Not found: OPTIONS /api/lists/3f0c6a9e-..."}`, with or without a token |
+| F3 (D-152) | A NUL byte in the login email reached Postgres | `curl ... -d '{"email":"demo\u0000@grocerysave.test","password":"x"}' $B/auth/login`: `{"error":"Invalid input"} 400`, and `WARN app.http database_input_rejected: ... (22021)` | `{"error":"Invalid email or password"} 401`, no query, no warning |
+| H1 (D-153) | `updateItem` relied on zod to keep unknown keys out of its `SET` list | (safe only by that) | an unknown key throws before any SQL is sent (unit test) |
+
+To see F1 and F2 yourself, start the server (M24.2) and run the two `curl`s of the Before column.
+`curl -s -D - ...` now shows `Cache-Control: no-store`, and the `OPTIONS` call shows the 404.
+
+### M28.5 Automated tests and the deliberate-bug checks
+
+| File | Project | Tests | What it checks |
+|---|---|---|---|
+| `server/tests/security.test.ts` | api | 1 | walks the route table: for every `/api/lists/:id...` route, Bob with a valid body gets 404 `List not found`, byte-identical to a list that does not exist, and Alice's list fingerprint does not change; Alice gets through on the same routes |
+| `server/src/__tests__/sqlAudit.test.ts` | unit | 1 | the static audit passes |
+| `server/tests/app.test.ts` | api | +10 | the two headers on 200, 400, 401 and 404 answers; OPTIONS is 404 on 5 paths with and without a token; nothing changes outside `/api` |
+| `server/tests/auth.test.ts` | api | +1 | a NUL or newline in the login email: 401, no credentials query, no warning |
+| `server/src/services/__tests__/items.test.ts` | unit | +1 | `updateItem` refuses a key without a column |
+| `src/utils/__tests__/parseListDetailed.test.ts` | unit | 28 | D-147: `unitWritten` for 17 line shapes, merging, CSV cells; the plain parsers equal the detailed ones without the flag on all 8 sample files |
+| `server/tests/import.test.ts` | api | 56 | D-147 through HTTP (the sample files now compare units with "written: kept; else the product's") |
+
+`security-mutations.sh` plants 7 bugs (each header removed, OPTIONS left to Express, the NUL email
+queried, the `updateItem` guard removed, a list name pasted into SQL, every list visible): 7
+`caught` (`logs/tests/20261117T015451Z-security-mutations.log`). `import-mutations.sh` gained 4
+D-147 bugs.
+
+### M28.6 Not covered, and residual risks
+
+See the list after D-153: no rate limiting on login, 409 on register reveals accounts, tokens cannot
+be revoked and live in `localStorage`, no `npm audit` (offline). Comparison and optimisation are not
+built, so "B cannot compare A's list" is only guarded in advance (the route-table test and the
+report's coverage check fail until those routes refuse other users).
+
+## M29. Extremes (API, round 7)
+
+What was asked: a paste of several thousand lines, a CSV with a quoted multi-line note, quantities 0
+and -2, a name of white space only, a very long name, a JSON body of the wrong shape, with clear 400s,
+no crashes and no partial writes; and the number of SQL statements `GET /api/lists` sends for a user
+with 20 lists of 10 items. Decisions: D-154 to D-158 (D-158 is a **question**). Everything below was
+run in this round; the outputs are the real ones.
+
+### M29.1 The automated tests
+
+```bash
+export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/grocerysave_test
+bash tests/run-logged.sh api npm run test:api
+bash tests/run-logged.sh unit npm run test:unit
+```
+
+`server/tests/extremes.test.ts` (77 tests). After **every** test it checks that the server still
+answers `/api/health`, that nothing was answered 500, and that Postgres refused no input. Every
+refusal is checked against a SHA-256 of **all** users, lists (with `updated_at`) and items taken
+before the request: a refused request must leave it exactly as it was.
+
+| Group | Cases |
+|---|---|
+| thousands of lines | 5000 different items: 400 `content: at most 500 items at a time (found 5000)`, under 5 s. 5000 lines merging into 10 items: 201, quantities 500. 3000 lines in six shapes coming down to exactly 500 items: 201. A paste over 1 MB: 413. 499 good lines and one 130-character name: 400 naming item 500, none of the 499 written. One 900 KB line of `a, a, a, ...`: 400 in seconds, not a hang |
+| parsing outside the lock | while another connection holds the list, a refused import answers 400 at once (D-157) |
+| multi-line CSV notes | LF and CRLF inside quotes: one item, note on one line; doubled quotes; a quoted name over two lines; a multi-line note over 200 characters: 400 naming the item; a quote never closed: the rest of the file is the last cell (the fixed CSV reader's rule), no crash |
+| quantities | 0, -2, -0, 0.0004, `1e400`, `-1e400`, 1e308, 10000000, 9999999.9995, `"2"`, `null`, `true`, `[2]`: each 400 with its message for a single add, an edit and a bulk add (as `items.3.quantity: ...`). In a paste, `0 milk` and `-2 milk` are names with quantity 1; in a CSV, 0, -2 and `abc` become 1 (D-158) |
+| blank names | 11 blank or invisible names (spaces, tab, newlines, NBSP, ideographic and em spaces, BOM, zero-width space, soft hyphen, word joiner + ZWJ...): 400 `name: is required` for list create and rename, item add and rename, bulk. Blank unit 400, blank note means no note. A pasted line with only a ZWJ: 400 naming it. An emoji family (joined by ZWJ) in a real name is kept |
+| long names | list name, list rename, item name, item rename, bulk item name: the limit in emoji passes; one more, and 500,000 characters, are 400 `... must be at most N characters`; over 1 MB is 413 |
+| wrong shapes | on all 8 write routes: `[]`, `[{"name":"milk"}]` give `The request body must be a JSON object`; `"milk"`, `42`, `null`, `true`, truncated JSON, unquoted keys give `Malformed JSON body`. 18 field-level shapes (arrays, objects, strings where numbers go, wrong keys...). 200,000 levels of nesting: 400. `__proto__` / `constructor.prototype` keys: no pollution. JSON as `text/plain`: 400 `name: is required`. A repeated key: the last wins |
+| query count | see M29.4 |
+
+Also `src/utils/__tests__/parseListSigns.test.ts` (11, D-156) and
+`server/src/middleware/__tests__/validate.test.ts` (21, `isBlank`).
+
+**The deliberate-bug check** (about 6 minutes):
+`bash tests/run-logged.sh extremes-mutations bash logs/tests/extremes-mutations.sh` plants 9 bugs.
+Examples: the size not checked before rounding, invisible names accepted, invisible units accepted,
+`-2` read as a bullet again, parsing back inside the transaction, the import limit 5000, the body
+limit 10 MB, one items query per list. Expected: 9 `caught`, `survivors: 0`. An earlier run had a
+survivor, a check after rounding that could never fire (the check before rounding already refuses
+anything above the maximum), so that dead check was removed.
+
+### M29.2 By hand
+
+Start the API as in M24.2, then in a second terminal:
+
+```bash
+export JWT_SECRET=manual-check-secret
+B=http://127.0.0.1:3001/api; J='Content-Type: application/json'
+TD=$(curl -s -H "$J" -d '{"email":"demo@grocerysave.test","password":"demo1234"}' $B/auth/login | node -pe 'JSON.parse(require("fs").readFileSync(0)).token'); A="Authorization: Bearer $TD"
+L=$(curl -s -H "$A" -H "$J" -d '{"name":"Extremes"}' $B/lists | node -pe 'JSON.parse(require("fs").readFileSync(0)).id')
+count() { curl -s -H "$A" $B/lists/$L | node -pe 'JSON.parse(require("fs").readFileSync(0)).items.length'; }
+c() { curl -s -w ' %{http_code}\n' "$@" | cut -c1-160; }
+# imp <text|csv> < content: imports stdin and prints "N item(s): name | quantity unit | note ..." or the error
+imp() { node -e 'console.log(JSON.stringify({format: process.argv[1], content: require("fs").readFileSync(0, "utf8")}))' "$1" | curl -s -w ' %{http_code}' -H "$A" -H "$J" -d @- $B/lists/$L/import | node -e 'const t=require("fs").readFileSync(0,"utf8"); const m=/ (\d{3})$/.exec(t); const o=JSON.parse(t.slice(0,m.index)); console.log(o.error ? `${JSON.stringify(o)}  ${m[1]}` : `${o.items.length} item(s): ${o.items.map(i=>`${i.name} | ${i.quantity} ${i.unit}${i.note ? ` | note "${i.note}"` : ""}`).join("; ")}  ${m[1]}`)'; }
+```
+
+| # | Command | Expected (real output) |
+|---|---|---|
+| 1 | `seq 1 5000 \| sed 's/^/item number /' \| imp text`, then `count` | `{"error":"content: at most 500 items at a time (found 5000)"}  400`; `0` |
+| 2 | `for i in $(seq 1 500); do printf -- '- bananas\n2 milk\nmilk\n'; done \| imp text` (1500 lines) | `2 item(s): bananas \| 500 lb; milk \| 1500 gal  201` (merged; units from the catalog, D-147) |
+| 3 | `printf 'name,quantity,unit,note\r\nMilk,2,l,"first line\nsecond line\r\nthird line"\r\n' \| imp csv` | `1 item(s): Milk \| 2 l \| note "first line second line third line"  201` |
+| 4 | `c -H "$A" -H "$J" -d '{"name":"milk","quantity":0}' $B/lists/$L/items`; the same with `-2`; `c ... -d '{"items":[{"name":"a"},{"name":"milk","quantity":-2}]}' $B/lists/$L/items/bulk`; `c ... -d '{"name":"milk","quantity":1e400}' ...` | `quantity: must be greater than 0` (twice), `items.1.quantity: must be greater than 0` (and `a` is not added either), `quantity: must be at most 9999999.999`; each `400` |
+| 5 | `printf '0 milk\n-2 milk\n- 2 bread\n' \| imp text` and `printf 'name,quantity\nmilk,0\neggs,-2\n' \| imp csv` | `3 item(s): 0 milk \| 1 each; -2 milk \| 1 each; bread \| 2 loaf  201` and `2 item(s): milk \| 1 gal; eggs \| 1 dozen  201`: the parser rules, not 400s (D-156, question D-158) |
+| 6 | `c -H "$A" -H "$J" -d '{"name":"   "}' $B/lists`; `c ... -d '{"name":"\u200b\u200b"}' $B/lists/$L/items`; `c ... -d '{"name":"\t\n"}' $B/lists/$L/items` | `{"error":"name: is required"} 400` three times (the zero-width spaces too, D-155) |
+| 7 | a list name of 101 `x`, an item name of 121 `y`: `c -H "$A" -H "$J" -d "{\"name\":\"$(printf 'x%.0s' $(seq 1 101))\"}" $B/lists` and the same with 121 to `.../items`; 1.1 MB: `node -e 'console.log(JSON.stringify({name:"z".repeat(1100000)}))' \| c -H "$A" -H "$J" -d @- $B/lists` | `name: must be at most 100 characters` 400; `name: must be at most 120 characters` 400; `Request body is too large` 413 |
+| 8 | `c ... -d '[]' $B/lists`; `-d '"milk"' .../items`; `-d '{"items":"milk"}' .../items/bulk`; `-d '{"name":{"first":"milk"}}' $B/lists`; `-d '{"format":"text","content":["milk"]}' .../import` | `The request body must be a JSON object`; `Malformed JSON body`; `items: must be a list of items`; `name: must be text`; `content: must be text`; each `400` |
+| 9 | `count` after all of the above | the items of steps 2, 3 and 5 only: nothing from a refused request |
+
+No request was answered 500. Check with the server log (M24.5):
+`grep -c '"level":"error"' logs/app/grocerysave-$(date -u +%F).log` and
+`grep -c database_input_rejected logs/app/grocerysave-$(date -u +%F).log` both give `0`.
+
+### M29.3 How long parsing takes (the worst cases found)
+
+Measured with the parsers alone (best of 5 runs, warm; `npx tsx` scripts in this round), for content
+near the 1 MB body limit:
+
+| Content | Size | Time |
+|---|---|---|
+| 5000 ordinary lines (`3 kg item 17 (note 17)`) | 130 KB | 61 ms (cold) |
+| 40,000 ordinary lines | 927 KB | 279 ms (cold) |
+| one line of `a, a, a, ...` | 1000 KB | 135 ms (1.06 s cold) |
+| one line of `1 1 1 ...` | 1000 KB | 112 ms (1.16 s cold) |
+| one line of `a (a (a ( ...` | 1000 KB | 315 ms (1.15 s cold) |
+| CSV: one quoted note with 150,000 newlines | 732 KB | 68 ms |
+| CSV: 100,000 rows with doubled quotes | 781 KB | 304 ms |
+| CSV: a quote never closed | 879 KB | 132 ms |
+
+Time grows about linearly up to 512 KB (x2 per doubling); nothing explodes. The body limit caps it.
+Since D-157 this parsing runs before any database connection or lock is taken.
+
+### M29.4 The SQL statements of `GET /api/lists`
+
+```bash
+export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/grocerysave_test
+bash tests/run-logged.sh query-count npx tsx tests/manual/query-count.ts     # [postgres log file]
+```
+
+It empties the test database; creates users with 20 lists of 10 items, 1 list and 100 lists; turns
+on `log_statement = 'all'` for the test database only; calls `GET /api/lists` over HTTP for each;
+counts the statements the app sent (every `pg` `Client.query` call) and those Postgres logged as
+executed between two marker statements; and resets the setting. Expected
+(`logs/tests/20261117T022237Z-query-count.log`):
+
+```
+## 20 list(s) of 10 items: GET /api/lists -> 200, 20 lists, 200 items
+Statements sent by the app (pg Client.query calls): 3
+Statements Postgres logged as executed for the request: 3
+  1. SELECT id, email, display_name FROM users WHERE id = $1
+  2. SELECT l.id, l.name, l.owner_id, l.household_id, l.created_at, l.updated_at FROM shopping_lists l WHERE l.owner_id = $1 ORDER BY l.updated_at DESC, l....
+  3. SELECT id, list_id, name, quantity, unit, category, note, product_id, completed FROM list_items WHERE list_id = ANY($1::uuid[]) ORDER BY list_id, posi...
+```
+
+then the same 3 for 1 list (10 items) and 100 lists (1000 items). **The number is 3**: the token's
+user, the lists, all their items in one query. With the classic mistake planted (one items query
+per list), the same tool shows 22 and 102. `extremes.test.ts` checks 3 (and 2 for a user without
+lists) in the test suite.
+
+### M29.5 Open question, and what is not covered
+
+- ~~Question D-158~~: answered in round 8: keep the number in the name (the stage-1 parser rules
+  stay; no 400 for quantities 0 and -2 in a paste or CSV).
+- Names that draw nothing but are not white space or format characters to Unicode (U+3164 Hangul
+  filler, U+2800 braille blank) are accepted (D-155).
+- A CSV quote that is never closed takes the rest of the file into its cell: the rule of the fixed
+  CSV reader (`src/utils/csv.ts`), not a 400.
+
+## M30. Where the API stands (API, round 8)
+
+### M30.1 The four checks
+
+```bash
+export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/grocerysave_test
+bash tests/run-logged.sh typecheck npm run typecheck
+bash tests/run-logged.sh lint      npm run lint
+bash tests/run-logged.sh unit      npm run test:unit
+bash tests/run-logged.sh api       npm run test:api
+```
+
+Results of this round: typecheck exit 0, no output (`logs/tests/20261117T024511Z-typecheck.log`);
+lint exit 0, no output (`...024533Z-lint.log`); unit **30 suites, 1399 tests passed** in 18 s
+(`...024551Z-unit.log`); API **13 suites, 479 tests passed** in 103 s (`...024613Z-api.log`).
+
+### M30.2 What TECH_SPEC 6 still lacks
+
+Endpoint inventory: `src/services/api.ts` calls 33 endpoints; the server has 13 of them plus health.
+To list them, compare the client's calls with the server's route table (`listApiRoutes`); the
+check done in this round is in DECISIONS ("Gaps at the end of API round 8").
+
+- **Built**: `POST /auth/register`, `POST /auth/login`, `GET /auth/me`, `GET|POST /lists`,
+  `GET|PATCH|DELETE /lists/:id`, `POST /lists/:id/items`, `PATCH|DELETE /lists/:id/items/:itemId`,
+  `POST /lists/:id/items/bulk`, `POST /lists/:id/import`, and `GET /health`.
+- **Missing (20)**: `GET /chains`, `GET /stores`, `GET /products`, `GET /products/:id/price-history`,
+  `GET /lists/:id/comparison`, `GET /lists/:id/optimization`, `POST /routes/optimize`,
+  `GET|PUT /preferences`, `GET|POST /households`, `POST /households/:id/members`,
+  `DELETE /households/:id/members/:userId`, `DELETE /households/:id`, `GET /deals`,
+  `GET /notifications`, `POST /notifications/:id/read`, `POST /notifications/read-all`,
+  `GET /sync/status`, `POST /sync/run`; and the service `generateDealNotifications`.
+- **Missing (TECH_SPEC 6.2)**: `server/src/index.ts` and `createApp`'s `staticDir`. `npm start` and
+  `npm run dev` fail today: `Error [ERR_MODULE_NOT_FOUND]: Cannot find module
+  '/workspace/server/src/index.ts'`.
+- **In the built endpoints, not yet as the spec says**: household visibility (a member sees and
+  edits a shared list; a member gets 403 for deleting or moving it). It was deferred on purpose
+  (round 3); the code is ready and unit-tested, but no member can reach a shared list yet (D-125).

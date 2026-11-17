@@ -92,7 +92,10 @@ export function parseQuantity(text: string): number | null {
  * and the symbols editors substitute for them ("– " and "— " from autocorrected dashes, "●", "■",
  * "➤", ticks "✓"/"✔" and ballot boxes "☐"/"☑").
  */
-const BULLET = /^(?:[-*+•◦▪‣·–—●○■□▸►➤→✓✔✗✘]\s*|\d+[.)](?:\s+|$)|\[\s*[xX✓✔]?\s*\]\s*|[☐☑☒]\s*)/;
+// "-" and "+" directly before a number are a sign, not a bullet ("-2 milk" is the name "-2 milk", as
+// "0 milk" is: a number that is not a positive quantity stays in the name). Before API round 7 the
+// "-" was stripped and "-2 milk" became 2 x milk (decision D-156). "- 2 milk" and "-eggs" are bullets.
+const BULLET = /^(?:[-+](?:\s+|(?![\d.,]))|[*•◦▪‣·–—●○■□▸►➤→✓✔✗✘]\s*|\d+[.)](?:\s+|$)|\[\s*[xX✓✔]?\s*\]\s*|[☐☑☒]\s*)/;
 
 /** "2x milk", "2 x milk", "2 × milk". */
 const LEADING_TIMES = new RegExp(String.raw`^(${QUANTITY})\s*[xX×]\s+(.+)$`);
@@ -119,6 +122,8 @@ const QUANTITY_WITH_UNIT = new RegExp(String.raw`^(${QUANTITY})\s*([a-zA-Z]+\.?)
 interface Amount {
   quantity: number;
   unit: string;
+  /** True when the text carried a unit word; false when the unit is the default 'each'. */
+  unitWritten: boolean;
 }
 
 /** Reads "2", "1.5 kg" or "500g" (a quantity with an optional known unit), else null. */
@@ -127,9 +132,9 @@ function parseAmount(text: string): Amount | null {
   if (!match) return null;
   const quantity = parseQuantity(match[1]);
   if (quantity === null) return null;
-  if (match[2] === undefined) return { quantity, unit: 'each' };
+  if (match[2] === undefined) return { quantity, unit: 'each', unitWritten: false };
   const unit = normalizeUnit(match[2]);
-  return unit === null ? null : { quantity, unit };
+  return unit === null ? null : { quantity, unit, unitWritten: true };
 }
 
 /** Invisible characters that web pages and chat apps leave in copied text. */
@@ -173,7 +178,7 @@ function leadingAmount(text: string): (Amount & { name: string }) | null {
   let match = LEADING_TIMES.exec(text);
   if (match) {
     const quantity = parseQuantity(match[1]);
-    return quantity === null ? null : { quantity, unit: 'each', name: match[2] };
+    return quantity === null ? null : { quantity, unit: 'each', unitWritten: false, name: match[2] };
   }
 
   match = LEADING_GLUED_UNIT.exec(text);
@@ -182,7 +187,7 @@ function leadingAmount(text: string): (Amount & { name: string }) | null {
     const unit = normalizeUnit(match[2]);
     // "7up cans" or "3m tape": the letters are not a unit, so the number belongs to the name.
     if (quantity === null || unit === null) return null;
-    return { quantity, unit, name: dropLeadingOf(match[3]) };
+    return { quantity, unit, unitWritten: true, name: dropLeadingOf(match[3]) };
   }
 
   match = LEADING_SPACED.exec(text);
@@ -194,9 +199,9 @@ function leadingAmount(text: string): (Amount & { name: string }) | null {
     // The first word is the unit only when a name remains after it ("2 lb" is 2 x "lb").
     if (space > 0) {
       const unit = normalizeUnit(rest.slice(0, space));
-      if (unit !== null) return { quantity, unit, name: dropLeadingOf(rest.slice(space + 1)) };
+      if (unit !== null) return { quantity, unit, unitWritten: true, name: dropLeadingOf(rest.slice(space + 1)) };
     }
-    return { quantity, unit: 'each', name: rest };
+    return { quantity, unit: 'each', unitWritten: false, name: rest };
   }
   return null;
 }
@@ -212,7 +217,7 @@ function trailingAmount(text: string): (Amount & { name: string }) | null {
   const times = TRAILING_TIMES.exec(text);
   if (times) {
     const quantity = parseQuantity(times[2]);
-    if (quantity !== null) return { quantity, unit: 'each', name: times[1] };
+    if (quantity !== null) return { quantity, unit: 'each', unitWritten: false, name: times[1] };
   }
   for (const pattern of [TRAILING_COMMA, TRAILING_DASH]) {
     const match = pattern.exec(text);
@@ -248,6 +253,26 @@ function trailingAmount(text: string): (Amount & { name: string }) | null {
  *   a unit ("7up"), is part of the name.
  */
 export function parseListLine(line: string): ParsedItem | null {
+  const parsed = parseListLineDetailed(line);
+  return parsed === null ? null : withoutUnitWritten(parsed);
+}
+
+/**
+ * A parsed item plus whether its unit was written (decision D-147, option A). A line without a unit
+ * ("milk", "2 milk", "milk x2") gets 'each' like one that says "2 each milk"; `unitWritten` tells
+ * them apart, so the API can give the first the catalog product's unit. `ParsedItem` (src/models)
+ * is fixed, hence a separate type and separate functions; the plain parsers are unchanged.
+ */
+export type ParsedLine = ParsedItem & { unitWritten: boolean };
+
+function withoutUnitWritten(parsed: ParsedLine): ParsedItem {
+  const { unitWritten, ...item } = parsed;
+  void unitWritten;
+  return item;
+}
+
+/** parseListLine, with `unitWritten`. */
+export function parseListLineDetailed(line: string): ParsedLine | null {
   const text = tidy(line);
   if (text === '' || text.startsWith('#')) return null;
 
@@ -274,9 +299,9 @@ export function parseListLine(line: string): ParsedItem | null {
       note = inner.group;
     }
   }
-  parsed ??= { quantity: 1, unit: 'each', name: body };
+  parsed ??= { quantity: 1, unit: 'each', unitWritten: false, name: body };
 
-  const item: ParsedItem = { name: tidy(parsed.name), quantity: parsed.quantity, unit: parsed.unit };
+  const item: ParsedLine = { name: tidy(parsed.name), quantity: parsed.quantity, unit: parsed.unit, unitWritten: parsed.unitWritten };
   if (note) item.note = tidy(note);
   return item;
 }
@@ -292,9 +317,14 @@ export function parseListLine(line: string): ParsedItem | null {
  * Lines ending in \n, \r\n or \r are accepted.
  */
 export function parseListText(text: string): ParsedItem[] {
-  const merged = new Map<string, { item: ParsedItem; notes: string[] }>();
+  return parseListTextDetailed(text).map(withoutUnitWritten);
+}
+
+/** parseListText, with `unitWritten`: a merged item counts as written when any of its lines wrote its unit. */
+export function parseListTextDetailed(text: string): ParsedLine[] {
+  const merged = new Map<string, { item: ParsedLine; notes: string[] }>();
   for (const line of text.split(/\r\n|\r|\n/)) {
-    const item = parseListLine(line);
+    const item = parseListLineDetailed(line);
     if (!item) continue;
     const key = `${item.name.toLowerCase()}\u0000${item.unit}`;
     const entry = merged.get(key);
@@ -303,6 +333,7 @@ export function parseListText(text: string): ParsedItem[] {
       continue;
     }
     entry.item.quantity = roundTo(entry.item.quantity + item.quantity, 3);
+    entry.item.unitWritten ||= item.unitWritten;
     if (item.note && !entry.notes.some((note) => note.toLowerCase() === item.note?.toLowerCase())) {
       entry.notes.push(item.note);
       entry.item.note = entry.notes.join('; ');
@@ -405,10 +436,10 @@ function detectListDelimiter(text: string): { delimiter: string; body: string } 
 }
 
 /** "2", "2 lb", "500g", "2 cups" in a quantity cell. The unit is null when absent or unknown. */
-function parseQuantityCell(cell: string): { quantity: number | null; unit: string | null } {
+function parseQuantityCell(cell: string): { quantity: number | null; unit: string | null; unitWritten: boolean } {
   const match = new RegExp(String.raw`^(${QUANTITY})\s*([a-zA-Z]+\.?)?$`).exec(tidy(cell));
-  if (!match) return { quantity: null, unit: null };
-  return { quantity: parseQuantity(match[1]), unit: match[2] === undefined ? null : normalizeUnit(match[2]) };
+  if (!match) return { quantity: null, unit: null, unitWritten: false };
+  return { quantity: parseQuantity(match[1]), unit: match[2] === undefined ? null : normalizeUnit(match[2]), unitWritten: match[2] !== undefined };
 }
 
 /**
@@ -424,6 +455,15 @@ function parseQuantityCell(cell: string): { quantity: number | null; unit: strin
  * entirely empty (",,,") are skipped; rows are not merged.
  */
 export function parseListCsv(csv: string): ParsedItem[] {
+  return parseListCsvDetailed(csv).map(withoutUnitWritten);
+}
+
+/**
+ * parseListCsv, with `unitWritten`: true when the unit cell is not empty, or the quantity cell
+ * carries a unit word ("2 lb"). A written unit that is not known still becomes 'each' (TECH_SPEC 5.2)
+ * and still counts as written.
+ */
+export function parseListCsvDetailed(csv: string): ParsedLine[] {
   const { delimiter, body } = detectListDelimiter(csv);
   const rows = parseCsv(body, { delimiter }).filter((row) => row.some((cell) => cell.trim() !== ''));
   if (rows.length === 0) return [];
@@ -432,14 +472,14 @@ export function parseListCsv(csv: string): ParsedItem[] {
   const columns = header ?? POSITIONAL_COLUMNS;
   const cellOf = (row: string[], field: CsvField) => (columns[field] < 0 ? '' : tidy(row[columns[field]] ?? ''));
 
-  const items: ParsedItem[] = [];
+  const items: ParsedLine[] = [];
   for (const row of header ? rows.slice(1) : rows) {
     const name = cellOf(row, 'name');
     if (name === '') continue;
     const fromQuantity = parseQuantityCell(cellOf(row, 'quantity'));
     const unitCell = cellOf(row, 'unit');
     const unit = unitCell !== '' ? normalizeUnit(unitCell) : fromQuantity.unit;
-    const item: ParsedItem = { name, quantity: fromQuantity.quantity ?? 1, unit: unit ?? 'each' };
+    const item: ParsedLine = { name, quantity: fromQuantity.quantity ?? 1, unit: unit ?? 'each', unitWritten: unitCell !== '' || fromQuantity.unitWritten };
     const note = cellOf(row, 'note');
     if (note !== '') item.note = note;
     items.push(item);
